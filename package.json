@@ -1,0 +1,29 @@
+{
+  "name": "sift",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run index.ts",
+    "test": "vitest",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "prettier .",
+    "format:check": "prettier . --check",
+    "format:write": "prettier . --write"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2003",
+    "prettier": "3.9.9",
+    "vitest": "^5.0.2"
+  },
+  "peerDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "agentmail": "^0.5.29",
+    "dotenv": "^18.0.3"
+  }
+}

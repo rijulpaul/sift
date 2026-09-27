@@ -1,3 +1,6 @@
+# Vitest reports and artifacts
+.vitest/
+
 # Logs
 logs
 *.log
