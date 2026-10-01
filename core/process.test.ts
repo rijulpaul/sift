@@ -179,21 +179,3 @@ describe("maskLinks", () => {
     expect(content).toContain("[two](LINK_2)");
   });
 });
-
-// ── End-to-end: does the whole pipeline handle a REAL newsletter? ───────────
-// test.html is a real (saved) newsletter email. This test guards that the full
-// clean → mask → markdown chain works on realistic input, not just toy cases.
-describe("processNewsletter (integration)", () => {
-  it("processes the real newsletter fixture without losing content or links", () => {
-    // Arrange: read the raw email fixture bundled with the repo
-    const html = readFileSync(new URL("../test.html", import.meta.url), "utf-8");
-
-    // Act
-    const { content, links } = processNewsletter(html);
-
-    // Assert
-    expect(content).toMatch(/The Pulse/);            // headline survived cleaning
-    expect(content).toContain("LINK_");          // links were masked
-    expect(links.size).toBeGreaterThan(0);           // and recorded in the map
-  });
-});

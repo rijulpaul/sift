@@ -154,7 +154,7 @@ function maskLinks(html: string): MaskedContent {
       isImage: false,
     });
 
-    $a.attr("href", `RESOURCE_${id}`);
+    $a.attr("href", `LINK_${id}`);
   });
 
   return {
