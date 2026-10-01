@@ -45,8 +45,8 @@ describe("logger", () => {
 
   it("defaults to the info level when LOG_LEVEL is not set", async () => {
     // Arrange
-    vi.stubEnv("NODE_ENV", "production");  // no pretty transport in tests
-    vi.stubEnv("LOG_LEVEL", undefined);    // "unset" the var (undefined deletes it)
+    vi.stubEnv("NODE_ENV", "production"); // no pretty transport in tests
+    vi.stubEnv("LOG_LEVEL", undefined); // "unset" the var (undefined deletes it)
 
     // Act — re-import: the module body runs again, reading the stubbed env
     const { logger } = await import(LOGGER_PATH);

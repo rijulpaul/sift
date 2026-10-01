@@ -37,11 +37,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The playbook of fake responses / spy functions our fake client will use.
 const mocks = vi.hoisted(() => ({
-  search: vi.fn(),   // client.inboxes.search
-  create: vi.fn(),   // client.inboxes.create
-  list: vi.fn(),     // client.inboxes.messages.list
-  get: vi.fn(),      // client.inboxes.messages.get
-  update: vi.fn(),   // client.inboxes.messages.update
+  search: vi.fn(), // client.inboxes.search
+  create: vi.fn(), // client.inboxes.create
+  list: vi.fn(), // client.inboxes.messages.list
+  get: vi.fn(), // client.inboxes.messages.get
+  update: vi.fn(), // client.inboxes.messages.update
 }));
 
 // Replace the "agentmail" module with our fake client.
@@ -167,7 +167,10 @@ describe("Mail.get — fetching full messages", () => {
     const inbox = new Inbox("inbox-x");
     // Page 1: one summary, plus a token for the next page.
     mocks.list
-      .mockResolvedValueOnce({ messages: [{ messageId: "m1" }], nextPageToken: "next" })
+      .mockResolvedValueOnce({
+        messages: [{ messageId: "m1" }],
+        nextPageToken: "next",
+      })
       .mockResolvedValueOnce({ messages: [{ messageId: "m2" }] });
     mocks.get.mockResolvedValue({ id: "full-message" });
 
@@ -175,10 +178,10 @@ describe("Mail.get — fetching full messages", () => {
     const messages = await inbox.get();
 
     // Assert
-    expect(mocks.list).toHaveBeenCalledTimes(2);   // followed the pagination token
-    expect(mocks.get).toHaveBeenCalledTimes(2);    // fetched one full message per id
+    expect(mocks.list).toHaveBeenCalledTimes(2); // followed the pagination token
+    expect(mocks.get).toHaveBeenCalledTimes(2); // fetched one full message per id
     expect(mocks.get).toHaveBeenCalledWith("inbox-x", "m1");
     expect(mocks.get).toHaveBeenCalledWith("inbox-x", "m2");
-    expect(messages).toHaveLength(2);              // both fetched messages returned
+    expect(messages).toHaveLength(2); // both fetched messages returned
   });
 });

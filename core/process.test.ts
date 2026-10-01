@@ -170,7 +170,7 @@ describe("maskLinks", () => {
 
     // maskLinks processes $("img[src]") first (id 0 = the image),
     // then $("a[href]") (ids 1, 2 = the links)
-    expect(links.get(0)?.isImage).toBe(true);                      // image got id 0
+    expect(links.get(0)?.isImage).toBe(true); // image got id 0
     expect(links.get(1)).toEqual({ id: 1, url: "/first", isImage: false });
     expect(links.get(2)).toEqual({ id: 2, url: "/second", isImage: false });
     expect(content).toContain("![pic](LINK_0)");

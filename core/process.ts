@@ -2,19 +2,14 @@ import * as cheerio from "cheerio";
 import TurndownService from "turndown";
 
 // Determine what elements to remove while processing html in cleanHtml()
-function shouldRemoveElement(
-  $: cheerio.CheerioAPI,
-  element: any,
-): boolean {
+function shouldRemoveElement($: cheerio.CheerioAPI, element: any): boolean {
   const width = $(element).attr("width");
   const height = $(element).attr("height");
 
   function isZeroOrOne(value?: string): boolean {
     if (!value) return false;
 
-    return /^(0|1)(px)?$/i.test(
-      value.trim().replace(/\s+/g, ""),
-    );
+    return /^(0|1)(px)?$/i.test(value.trim().replace(/\s+/g, ""));
   }
 
   if (isZeroOrOne(width) || isZeroOrOne(height)) {
@@ -30,10 +25,7 @@ function shouldRemoveElement(
 
     if (separator === -1) continue;
 
-    const property = declaration
-      .slice(0, separator)
-      .trim()
-      .toLowerCase();
+    const property = declaration.slice(0, separator).trim().toLowerCase();
 
     const value = declaration
       .slice(separator + 1)
@@ -86,13 +78,13 @@ function htmlToMarkdown(html: string): string {
   */
 
   const turndownService = new TurndownService({
-    headingStyle: 'atx', // Use # instead of underlining for headers
-    codeBlockStyle: 'fenced' // Use ``` for code blocks
+    headingStyle: "atx", // Use # instead of underlining for headers
+    codeBlockStyle: "fenced", // Use ``` for code blocks
   });
 
   const markdown: string = turndownService.turndown(html);
 
-  return markdown
+  return markdown;
 }
 
 /*
@@ -100,12 +92,12 @@ replace urls with incremental ids, fetch required data by id via llm tool call
 for unifed url storage and to prevent llm from hallucinating on urls
 */
 
-interface MaskedUrl{
+interface MaskedUrl {
   id: number;
   url: string;
   isImage: boolean;
   alt?: string;
-  title?: string
+  title?: string;
 }
 
 interface MaskedContent {
@@ -164,8 +156,8 @@ function maskLinks(html: string): MaskedContent {
 }
 
 export function processNewsletter(newsletter_html: string) {
-  newsletter_html = cleanHtml(newsletter_html)
-  const masked_newsletter = maskLinks(newsletter_html)
-  masked_newsletter.content = htmlToMarkdown(masked_newsletter.content)
-  return masked_newsletter
+  newsletter_html = cleanHtml(newsletter_html);
+  const masked_newsletter = maskLinks(newsletter_html);
+  masked_newsletter.content = htmlToMarkdown(masked_newsletter.content);
+  return masked_newsletter;
 }
