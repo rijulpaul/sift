@@ -96,8 +96,10 @@ function htmlToMarkdown(html: string): string {
 }
 
 /*
-Map and replace urls with id, fetch required data by id via llm tool call
+replace urls with incremental ids, fetch required data by id via llm tool call
+for unifed url storage and to prevent llm from hallucinating on urls
 */
+
 interface MaskedUrl{
   id: number;
   url: string;
@@ -134,7 +136,7 @@ function maskLinks(html: string): MaskedContent {
       title: $img.attr("title"),
     });
 
-    $img.attr("src", `RESOURCE_${id}`);
+    $img.attr("src", `LINK_${id}`);
   });
 
   // Normal hyperlinks
