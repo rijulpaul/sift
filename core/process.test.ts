@@ -24,7 +24,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
 import { processNewsletter } from "./process";
 
 // ── cleanHtml: strips tracking pixels & hidden elements ─────────────────────
