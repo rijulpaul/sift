@@ -1,10 +1,15 @@
 import pino from "pino";
 
-const transport = [undefined, "development"].includes(process.env.NODE_ENV)
-  ? { target: "pino-pretty" }
-  : undefined;
+const isTest = process.env.VITEST === "true";
+
+const transport =
+  !isTest && process.env.PRETTY_LOG === "true"
+    ? { target: "pino-pretty" }
+    : undefined;
 
 export const logger = pino({
-  level: process.env.LOG_LEVEL ?? "info",
+  level: isTest
+    ? (process.env.TEST_LOG_LEVEL || "silent")
+    : (process.env.LOG_LEVEL || "silent"),
   transport: transport,
 });

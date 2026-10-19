@@ -1,0 +1,12 @@
+{
+  "tui": false,
+  "webui": false,
+  "email": null,
+  "create_email": true,
+  "auto_mark_as_read": true,
+  "llm_provider": "openrouter",
+  "llm_name": "openai/gpt-oss-120b",
+  "process_images": false,
+  "vlm_provider": null,
+  "vlm_name": null
+}

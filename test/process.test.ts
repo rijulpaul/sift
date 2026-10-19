@@ -24,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from "vitest";
-import { processNewsletter } from "./process";
+import { processNewsletter } from "../core/process";
 
 // ── cleanHtml: strips tracking pixels & hidden elements ─────────────────────
 // Newsletters are full of 1x1 tracking pixels (width/height of 0 or 1, often
@@ -136,7 +136,7 @@ describe("maskLinks", () => {
     // The markdown link now points at the placeholder id...
     expect(content).toContain("[Read more](LINK_0)");
     // ...and the real URL lives in the map, keyed by that same id
-    expect(links.get(0)).toEqual({
+    expect(links[0]).toEqual({
       id: 0,
       url: "https://example.com/article",
       isImage: false,
@@ -151,7 +151,7 @@ describe("maskLinks", () => {
     const { content, links } = processNewsletter(html);
 
     expect(content).toContain("LINK_0");
-    expect(links.get(0)).toEqual({
+    expect(links[0]).toEqual({
       id: 0,
       url: "https://ex.com/chart.png",
       isImage: true,
@@ -170,9 +170,9 @@ describe("maskLinks", () => {
 
     // maskLinks processes $("img[src]") first (id 0 = the image),
     // then $("a[href]") (ids 1, 2 = the links)
-    expect(links.get(0)?.isImage).toBe(true); // image got id 0
-    expect(links.get(1)).toEqual({ id: 1, url: "/first", isImage: false });
-    expect(links.get(2)).toEqual({ id: 2, url: "/second", isImage: false });
+    expect(links[0]?.isImage).toBe(true); // image got id 0
+    expect(links[1]).toEqual({ id: 1, url: "/first", isImage: false });
+    expect(links[2]).toEqual({ id: 2, url: "/second", isImage: false });
     expect(content).toContain("![pic](LINK_0)");
     expect(content).toContain("[one](LINK_1)");
     expect(content).toContain("[two](LINK_2)");

@@ -1,0 +1,52 @@
+{
+  "tui": {
+    "flag": "--tui",
+    "type": "boolean",
+    "description": "Enable the terminal user interface"
+  },
+  "webui": {
+    "flag": "--webui",
+    "type": "boolean",
+    "description": "Enable the web user interface"
+  },
+  "email": {
+    "flag": "--email",
+    "type": "string",
+    "description": "Email address to use"
+  },
+  "create_email": {
+    "flag": "--create-email",
+    "type": "boolean",
+    "description": "Create an email account"
+  },
+  "auto_mark_as_read": {
+    "flag": "--auto-mark-as-read",
+    "type": "boolean",
+    "description": "Automatically mark emails as read"
+  },
+  "llm_provider": {
+    "flag": "--llm-provider",
+    "type": "string",
+    "description": "LLM provider"
+  },
+  "llm_name": {
+    "flag": "--llm-name",
+    "type": "string",
+    "description": "LLM model name"
+  },
+  "process_images": {
+    "flag": "--process-images",
+    "type": "boolean",
+    "description": "Enable image processing"
+  },
+  "vlm_provider": {
+    "flag": "--vlm-provider",
+    "type": "string",
+    "description": "Vision-language model provider"
+  },
+  "vlm_name": {
+    "flag": "--vlm-name",
+    "type": "string",
+    "description": "Vision-language model name"
+  }
+}

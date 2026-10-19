@@ -1,5 +1,10 @@
 import * as cheerio from "cheerio";
+import * as z from "zod";
 import TurndownService from "turndown";
+
+import { logger } from "./logger";
+
+const log = logger.child({ module: "process" });
 
 // Determine what elements to remove while processing html in cleanHtml()
 function shouldRemoveElement($: cheerio.CheerioAPI, element: any): boolean {
@@ -92,7 +97,7 @@ replace urls with incremental ids, fetch required data by id via llm tool call
 for unifed url storage and to prevent llm from hallucinating on urls
 */
 
-interface MaskedUrl {
+export interface MaskedUrl {
   id: number;
   url: string;
   isImage: boolean;
@@ -100,14 +105,24 @@ interface MaskedUrl {
   title?: string;
 }
 
-interface MaskedContent {
+export const MaskedUrlSchema = z.object({
+  id: z.number(),
+  url: z.string(),
+  isImage: z.boolean(),
+  alt: z.string().optional(),
+  title: z.string().optional(),
+});
+
+export type MaskedUrls = Record<number, MaskedUrl>;
+
+export interface MaskedContent {
   content: string;
-  links: Map<number, MaskedUrl>;
+  links: MaskedUrls;
 }
 
 function maskLinks(html: string): MaskedContent {
   const $ = cheerio.load(html);
-  const links = new Map<number, MaskedUrl>();
+  const links: MaskedUrls = {};
 
   let nextId = 0;
 
@@ -120,13 +135,13 @@ function maskLinks(html: string): MaskedContent {
 
     const id = nextId++;
 
-    links.set(id, {
+    links[id] = {
       id,
       url,
       isImage: true,
       alt: $img.attr("alt"),
       title: $img.attr("title"),
-    });
+    };
 
     $img.attr("src", `LINK_${id}`);
   });
@@ -140,11 +155,11 @@ function maskLinks(html: string): MaskedContent {
 
     const id = nextId++;
 
-    links.set(id, {
+    links[id] = {
       id,
       url,
       isImage: false,
-    });
+    };
 
     $a.attr("href", `LINK_${id}`);
   });
@@ -156,8 +171,24 @@ function maskLinks(html: string): MaskedContent {
 }
 
 export function processNewsletter(newsletter_html: string) {
+  log.debug({ chars: newsletter_html.length }, "processing newsletter");
+
   newsletter_html = cleanHtml(newsletter_html);
+  log.debug({ chars: newsletter_html.length }, "cleaned html");
+
   const masked_newsletter = maskLinks(newsletter_html);
+
+  const links = Object.values(masked_newsletter.links);
+  const images = links.filter((link) => link.isImage).length;
+  const hyperlinks = links.length - images;
+  log.debug({ images, hyperlinks }, "masked links");
+
   masked_newsletter.content = htmlToMarkdown(masked_newsletter.content);
+
+  log.info(
+    { images, hyperlinks, chars: masked_newsletter.content.length },
+    "newsletter processed to markdown",
+  );
+
   return masked_newsletter;
 }

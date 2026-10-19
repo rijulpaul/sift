@@ -2,12 +2,14 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc"],
   "options": {
-    "typeAware": true
+    "typeAware": true,
   },
   "categories": {
     "correctness": "error"
   },
-  "rules": {},
+  "rules": {
+    "no-unused-vars": "warn"
+  },
   "env": {
     "builtin": true
   }
