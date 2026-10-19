@@ -9,7 +9,7 @@ const transport =
 
 export const logger = pino({
   level: isTest
-    ? (process.env.TEST_LOG_LEVEL || "silent")
-    : (process.env.LOG_LEVEL || "silent"),
+    ? process.env.TEST_LOG_LEVEL || "silent"
+    : process.env.LOG_LEVEL || "silent",
   transport: transport,
 });

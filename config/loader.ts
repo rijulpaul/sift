@@ -59,7 +59,7 @@ export const resolveConfig = (overrides: ConfigOverrides = {}): Config => {
  * `email` is optional when `create_email` is enabled (a random inbox is
  * created), and the vision settings are only needed for image processing.
  */
-const checkMissingFields = (config: Config)  => {
+const checkMissingFields = (config: Config) => {
   const missing: (keyof Config)[] = [];
 
   if (!config.email && !config.createEmail) missing.push("email");
@@ -79,13 +79,13 @@ const checkMissingFields = (config: Config)  => {
 };
 
 export const validateConfig = (config: Config) => {
-  checkMissingFields(config)
+  checkMissingFields(config);
 
   //atleast one UI type must be selected
   if (!config.tui && !config.webui) {
     console.error(
       `Warning: Both TUI and WebUI are disabled. Nothing will be displayed.
-{tui: ${config.tui}, webui: ${config.webui}}`
-    )
+{tui: ${config.tui}, webui: ${config.webui}}`,
+    );
   }
-}
+};

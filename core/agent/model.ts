@@ -2,7 +2,7 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatGoogle } from "@langchain/google";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatOpenRouter } from "@langchain/openrouter";
-import * as z from "zod"
+import * as z from "zod";
 
 export type ModelProvider = "anthropic" | "google" | "openai" | "openrouter";
 
@@ -41,6 +41,8 @@ export function getModel(modelInfo: ModelInfo) {
       });
 
     default:
-      throw new Error(`Unsupported model provider: ${modelInfo.modelProvider as string}`);
+      throw new Error(
+        `Unsupported model provider: ${modelInfo.modelProvider as string}`,
+      );
   }
 }

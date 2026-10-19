@@ -235,4 +235,4 @@ const image = `
 
   When an image is analyzed, treat the returned analysis as additional source material. Do not invent information beyond what the image analysis provides.
 
-`
+`;

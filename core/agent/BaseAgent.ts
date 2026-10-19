@@ -7,7 +7,7 @@ export abstract class BaseAgent<TInput, TOutput = string> {
 
   protected agent!: ReturnType<typeof createAgent>;
 
-  constructor({agentName}:{agentName:string}) {
+  constructor({ agentName }: { agentName: string }) {
     this.name = agentName;
 
     logger.info(`[${this.name} Agent] Initializing`);
@@ -20,13 +20,12 @@ export abstract class BaseAgent<TInput, TOutput = string> {
 
     try {
       for await (const chunk of this.execute(input)) {
-         yield chunk
-       }
+        yield chunk;
+      }
 
       logger.info(`[${this.name}] completed`);
-
     } catch (error: any) {
-      logger.error({err: error},`[${this.name}] Agent failed`);
+      logger.error({ err: error }, `[${this.name}] Agent failed`);
       throw error;
     }
   }
@@ -34,7 +33,5 @@ export abstract class BaseAgent<TInput, TOutput = string> {
   /**
    * Agent-specific implementation.
    */
-  protected abstract execute(
-      input: TInput
-    ): AsyncIterable<string>;
+  protected abstract execute(input: TInput): AsyncIterable<string>;
 }

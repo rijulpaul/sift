@@ -96,10 +96,10 @@ export class Inbox {
         );
 
         for (const i of res.inboxes) {
-          if (i.email == inboxConfig.email){
+          if (i.email == inboxConfig.email) {
             inboxId = i.inboxId;
             email = i.email;
-            displayName = i.displayName || undefined
+            displayName = i.displayName || undefined;
             log.info({ inboxId: inboxId }, "existing inbox found");
           }
         }
@@ -124,9 +124,9 @@ export class Inbox {
               displayName: inboxConfig.displayName,
             }),
         );
-        inboxId = inbox.inboxId
-        displayName = inbox.displayName || undefined
-        email = inbox.email
+        inboxId = inbox.inboxId;
+        displayName = inbox.displayName || undefined;
+        email = inbox.email;
         log.info({ inbox_id: inboxId }, "inbox created");
       } else {
         log.error(
@@ -140,7 +140,7 @@ export class Inbox {
       }
     }
 
-    return new Inbox({inboxId,email,displayName});
+    return new Inbox({ inboxId, email, displayName });
   };
 
   public get = async (request?: ListMessagesRequest) => {
@@ -220,14 +220,11 @@ export class Inbox {
   };
 
   public delete = async (message_id: string) => {
-      await handleApiCall(
-        "delete message",
-        { inbox_id: this.inbox_id, message_id },
-        () => Inbox.client.inboxes.messages.delete(this.inbox_id, message_id),
-      );
-      log.debug(
-        { inbox_id: this.inbox_id, message_id },
-        "message deleted",
-      );
-  }
+    await handleApiCall(
+      "delete message",
+      { inbox_id: this.inbox_id, message_id },
+      () => Inbox.client.inboxes.messages.delete(this.inbox_id, message_id),
+    );
+    log.debug({ inbox_id: this.inbox_id, message_id }, "message deleted");
+  };
 }
