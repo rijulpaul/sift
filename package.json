@@ -3,10 +3,14 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "dev": "bun run index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:tui": "bun test test/cli/app.bun.test.ts",
     "lint": "oxlint",
     "format": "prettier .",
     "format:check": "prettier . --check",
@@ -27,6 +31,7 @@
     "@langchain/anthropic": "^1.5.12",
     "@langchain/core": "^1.2.14",
     "@langchain/google": "^0.2.9",
+    "@langchain/openai": "^1.6.2",
     "@langchain/openrouter": "^0.4.17",
     "@opentui/core": "^0.6.6",
     "@types/turndown": "^5.0.6",
