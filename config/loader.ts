@@ -1,7 +1,8 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { ModelProvider } from "../core/agent/model";
+import completions from "./completions.json" with { type: "json" };
 import type { Config } from "./config";
 
 /** A single config value as serialized in defaults.json. */
@@ -15,8 +16,57 @@ export type ConfigOverrides = Record<string, ConfigValue | undefined>;
 
 const defaultsPath = fileURLToPath(new URL("./defaults.json", import.meta.url));
 
-export const readRawConfig = (): RawConfig =>
-  JSON.parse(readFileSync(defaultsPath, "utf8")) as RawConfig;
+/** Every setting sift knows about; a complete defaults.json defines all of them. */
+const CONFIG_KEYS = Object.keys(completions);
+
+/** Path as the user sees it, for error messages. */
+const DEFAULTS_FILE = "config/defaults.json";
+
+const CONFIGURE_HINT =
+  "Run without --no-launcher to configure sift, or pass the values as CLI flags.";
+
+/**
+ * Read defaults.json as-is.
+ *
+ * A missing file is not fatal here: the launcher reads the raw config to
+ * bootstrap a fresh one, so it gets `{}` back. Rejecting an absent file is
+ * `assertConfigFileComplete`'s job.
+ */
+export const readRawConfig = (): RawConfig => {
+  if (!existsSync(defaultsPath)) return {};
+
+  try {
+    return JSON.parse(readFileSync(defaultsPath, "utf8")) as RawConfig;
+  } catch (error) {
+    throw new Error(
+      `${DEFAULTS_FILE} is not valid JSON. Fix or delete it, then configure sift again.`,
+      { cause: error },
+    );
+  }
+};
+
+/**
+ * Throw unless defaults.json exists and defines every known setting, so a
+ * missing or half-written file reports itself as "not configured" instead of
+ * failing later on some unrelated value.
+ */
+export const assertConfigFileComplete = (): void => {
+  if (!existsSync(defaultsPath)) {
+    throw new Error(
+      `${DEFAULTS_FILE} was not found, so sift is not configured. ${CONFIGURE_HINT}`,
+    );
+  }
+
+  const raw = readRawConfig();
+  const missing = CONFIG_KEYS.filter((key) => !(key in raw));
+
+  if (missing.length > 0) {
+    throw new Error(
+      `${DEFAULTS_FILE} is incomplete, missing: ${missing.join(", ")}. ` +
+        `Sift is not configured. ${CONFIGURE_HINT}`,
+    );
+  }
+};
 
 export const writeRawConfig = (config: RawConfig): void => {
   writeFileSync(defaultsPath, `${JSON.stringify(config, null, 2)}\n`);
@@ -45,7 +95,8 @@ export const resolveConfig = (overrides: ConfigOverrides = {}): Config => {
     email: asString(raw.email),
     displayName: undefined,
     createEmail: Boolean(raw.create_email),
-    autoMarkAsRead: Boolean(raw.auto_mark_as_read),
+    markAsRead: Boolean(raw.mark_as_read),
+    summarize: Boolean(raw.summarize),
     llmProvider: asString(raw.llm_provider) as ModelProvider | undefined,
     llmName: asString(raw.llm_name),
     processImages: Boolean(raw.process_images),
@@ -79,6 +130,7 @@ const checkMissingFields = (config: Config) => {
 };
 
 export const validateConfig = (config: Config) => {
+  assertConfigFileComplete();
   checkMissingFields(config);
 
   //atleast one UI type must be selected

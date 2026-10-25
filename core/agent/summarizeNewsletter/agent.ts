@@ -1,25 +1,51 @@
-import { createAgent } from "langchain";
-import { getUrlContext } from "./tools";
-import { summarizeNewsletterPrompt as systemPrompt } from "./prompt";
+import type { createAgent } from "langchain";
+import * as z from "zod";
+
 import {
   MaskedUrlSchema,
   type MaskedContent,
   type MaskedUrl,
 } from "../../process";
-import * as z from "zod";
+import { BaseAgent } from "../BaseAgent";
 import {
   getModel,
   modelProviderSchema,
   type ModelInfo,
   type ModelProvider,
 } from "../model";
-import { BaseAgent } from "../BaseAgent";
+import { summarizeNewsletterPrompt as systemPrompt } from "./prompt";
 
-const toolConfigSchema = z.object({
-  vlmProvider: modelProviderSchema,
-  vlmName: z.string(),
-  processImages: z.boolean(),
-});
+/**
+ * `null`, `undefined` and blank strings all mean "not set" — defaults.json
+ * stores unset settings as null, and empty strings are not supported values.
+ */
+const unsetToUndefined = (value: unknown) =>
+  value === null || (typeof value === "string" && value.trim() === "")
+    ? undefined
+    : value;
+
+/**
+ * The vision settings are only required when image processing is on:
+ * process_images can be disabled with vlm_provider/vlm_name unset, and the
+ * agent must still run. When it is on, both must be set.
+ */
+export const toolConfigSchema = z
+  .object({
+    vlmProvider: z.preprocess(unsetToUndefined, modelProviderSchema.optional()),
+    vlmName: z.preprocess(unsetToUndefined, z.string().optional()),
+    processImages: z.boolean(),
+  })
+  .refine(
+    (toolConfig) =>
+      !toolConfig.processImages ||
+      (toolConfig.vlmProvider !== undefined &&
+        toolConfig.vlmName !== undefined),
+    {
+      message:
+        "process_images is enabled but the vision settings are missing: set vlm_provider and vlm_name, or disable process_images",
+      path: ["processImages"],
+    },
+  );
 
 export interface ToolConfig {
   vlmProvider: ModelProvider | undefined;
@@ -42,15 +68,40 @@ export class NewsletterSummarizationAgent extends BaseAgent<
   string | undefined
 > {
   private readonly toolConfig: ToolConfig;
-  constructor(modelInfo: ModelInfo, toolConfig: ToolConfig) {
+
+  /**
+   * Build the agent. Async because `langchain`, its tools and the provider SDK
+   * are imported here rather than at module load, keeping ~600ms of module
+   * loading off the startup path.
+   */
+  static async create(
+    modelInfo: ModelInfo,
+    toolConfig: ToolConfig,
+  ): Promise<NewsletterSummarizationAgent> {
+    const [{ createAgent }, { getUrlContext }, model] = await Promise.all([
+      import("langchain"),
+      import("./tools"),
+      getModel(modelInfo),
+    ]);
+
+    return new NewsletterSummarizationAgent(
+      toolConfig,
+      createAgent({
+        model,
+        tools: toolConfig.processImages ? [getUrlContext] : [],
+        systemPrompt,
+        contextSchema,
+      }),
+    );
+  }
+
+  private constructor(
+    toolConfig: ToolConfig,
+    agent: ReturnType<typeof createAgent>,
+  ) {
     super({ agentName: "Newsletter Summarization" });
     this.toolConfig = toolConfig;
-    this.agent = createAgent({
-      model: getModel(modelInfo),
-      tools: [getUrlContext],
-      systemPrompt,
-      contextSchema,
-    });
+    this.agent = agent;
   }
 
   protected async *execute(

@@ -29,6 +29,9 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const VLM_KEYS = new Set(["vlm_provider", "vlm_name"]);
 
+/** Settings written to defaults.json; see also `assertConfigFileComplete`. */
+const CONFIG_KEYS = Object.keys(completions);
+
 type PromptValue = string | boolean;
 
 function abort(message = "Goodbye"): never {
@@ -118,6 +121,11 @@ const configure = async (
     working[key] = value === "" ? null : value;
   }
 
+  // The loop above skips settings that don't apply (the vision keys when image
+  // processing is off). Write them out as null anyway: assertConfigFileComplete
+  // requires every known key to be present.
+  for (const key of CONFIG_KEYS) working[key] ??= null;
+
   writeRawConfig(working);
   log.debug(
     { keys: Object.keys(working) },
@@ -125,6 +133,8 @@ const configure = async (
   );
   p.log.success("Configuration saved to config/defaults.json");
 };
+
+export const createConfig = () => configure(readRawConfig())
 
 const start = async (overrides: ConfigOverrides): Promise<Config> => {
   const config = resolveConfig(overrides);

@@ -6,7 +6,8 @@ export interface Config {
   email: string | undefined;
   displayName: string | undefined;
   createEmail: boolean;
-  autoMarkAsRead: boolean;
+  markAsRead: boolean;
+  summarize: boolean;
   llmProvider: ModelProvider | undefined;
   llmName: string | undefined;
   processImages: boolean;

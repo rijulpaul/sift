@@ -19,10 +19,15 @@
     "type": "boolean",
     "description": "Create an email account"
   },
-  "auto_mark_as_read": {
-    "flag": "--auto-mark-as-read",
+  "mark_as_read": {
+    "flag": "--mark-as-read",
     "type": "boolean",
-    "description": "Automatically mark emails as read"
+    "description": "Mark emails as read when opened"
+  },
+  "summarize": {
+    "flag": "--summarize",
+    "type": "boolean",
+    "description": "Summarize unread emails"
   },
   "llm_provider": {
     "flag": "--llm-provider",
