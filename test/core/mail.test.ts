@@ -33,7 +33,7 @@
 //   Sending fake values into real code paths lets us test:
 //     - discovery of an existing inbox    (Inbox.init → found)
 //     - creation of a new inbox           (Inbox.init → not found)
-//     - pagination loops (inboxes.search AND messages.list)
+//     - pagination loops (inboxes.list AND messages.list)
 //     - label updates                     (Inbox.updateLabels)
 //     - deletion                          (Inbox.delete)
 //     - failure handling                  (rejected SDK promises → wrapped errors)
@@ -43,7 +43,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The playbook of fake responses / spy functions our fake client will use.
 const mocks = vi.hoisted(() => ({
-  search: vi.fn(), // client.inboxes.search
+  listInboxes: vi.fn(), // client.inboxes.list (inbox discovery)
   create: vi.fn(), // client.inboxes.create
   list: vi.fn(), // client.inboxes.messages.list
   get: vi.fn(), // client.inboxes.messages.get
@@ -66,11 +66,11 @@ vi.mock("../../core/logger", () => ({
 
 // Replace the "agentmail" module with our fake client.
 // The shape mirrors the real AgentMailClient API: a nested `inboxes` object
-// with search/create and a nested `messages` resource.
+// with list/create and a nested `messages` resource.
 vi.mock("agentmail", () => {
   class MockAgentMailClient {
     inboxes = {
-      search: mocks.search,
+      list: mocks.listInboxes,
       create: mocks.create,
       messages: {
         list: mocks.list,
@@ -95,6 +95,13 @@ const catchError = async (promise: Promise<unknown>): Promise<any> => {
   throw new Error("expected promise to reject, but it resolved");
 };
 
+// Collects an async iterable, so it can be passed to catchError.
+const collect = async (iterable: AsyncIterable<unknown>) => {
+  const items: unknown[] = [];
+  for await (const item of iterable) items.push(item);
+  return items;
+};
+
 // The message argument of every call at a given log level.
 const loggedMessages = (level: keyof typeof logMock) =>
   logMock[level].mock.calls.map((args) => args.at(-1));
@@ -110,7 +117,7 @@ describe("Mail.init — inbox discovery/creation", () => {
 
   it("adopts an existing inbox when the searched email matches", async () => {
     // Arrange — the "server" has an inbox with our email
-    mocks.search.mockResolvedValue({
+    mocks.listInboxes.mockResolvedValue({
       inboxes: [{ email: "news@example.com", inboxId: "inbox-found" }],
     });
 
@@ -124,7 +131,7 @@ describe("Mail.init — inbox discovery/creation", () => {
     // We prove the binding by calling mail.get() and checking which inbox id
     // was used for the messages.list call.
     await inbox.get();
-    expect(mocks.list).toHaveBeenCalledWith("inbox-found", undefined);
+    expect(mocks.list).toHaveBeenCalledWith("inbox-found", {});
 
     // And since we found it, no inbox should have been created.
     expect(mocks.create).not.toHaveBeenCalled();
@@ -132,7 +139,7 @@ describe("Mail.init — inbox discovery/creation", () => {
 
   it("keeps paginating until a matching inbox is found", async () => {
     // Arrange — page 1 has no match but points to a page 2, which does.
-    mocks.search
+    mocks.listInboxes
       .mockResolvedValueOnce({
         inboxes: [{ email: "other@example.com", inboxId: "inbox-1" }],
         nextPageToken: "page-2",
@@ -148,19 +155,18 @@ describe("Mail.init — inbox discovery/creation", () => {
     });
 
     // Assert — both pages were searched, the second one passing the token...
-    expect(mocks.search).toHaveBeenCalledTimes(2);
-    expect(mocks.search).toHaveBeenNthCalledWith(2, {
-      q: "news@example.com",
+    expect(mocks.listInboxes).toHaveBeenCalledTimes(2);
+    expect(mocks.listInboxes).toHaveBeenNthCalledWith(2, {
       pageToken: "page-2",
     });
     // ...and the resulting Mail is bound to the inbox found on page 2.
     await inbox.get();
-    expect(mocks.list).toHaveBeenCalledWith("inbox-2", undefined);
+    expect(mocks.list).toHaveBeenCalledWith("inbox-2", {});
   });
 
   it("creates a new inbox when no existing one matches and createEmail is 'true'", async () => {
     // Arrange — search comes back empty
-    mocks.search.mockResolvedValue({ inboxes: [] });
+    mocks.listInboxes.mockResolvedValue({ inboxes: [] });
     mocks.create.mockResolvedValue({ inboxId: "inbox-new" });
 
     // Act
@@ -178,7 +184,7 @@ describe("Mail.init — inbox discovery/creation", () => {
 
     // The created inbox id is the one used for message listing afterwards.
     await inbox.get();
-    expect(mocks.list).toHaveBeenCalledWith("inbox-new", undefined);
+    expect(mocks.list).toHaveBeenCalledWith("inbox-new", {});
   });
 
   it("creates an inbox even when no email is provided and createEmail is 'true'", async () => {
@@ -189,7 +195,7 @@ describe("Mail.init — inbox discovery/creation", () => {
     const inbox = await Inbox.init({ createEmail: true });
 
     // Assert
-    expect(mocks.search).not.toHaveBeenCalled();
+    expect(mocks.listInboxes).not.toHaveBeenCalled();
     expect(mocks.create).toHaveBeenCalledWith({
       username: undefined,
       domain: undefined,
@@ -197,7 +203,7 @@ describe("Mail.init — inbox discovery/creation", () => {
     });
 
     await inbox.get();
-    expect(mocks.list).toHaveBeenCalledWith("inbox-anon", undefined);
+    expect(mocks.list).toHaveBeenCalledWith("inbox-anon", {});
   });
 
   it("DOES NOT create a new inbox when no existing one matches and createEmail is 'false'", async () => {
@@ -215,7 +221,7 @@ describe("Mail.init — inbox discovery/creation", () => {
     await expect(Inbox.init({ createEmail: false })).rejects.toThrow();
 
     // Assert
-    expect(mocks.search).not.toHaveBeenCalled();
+    expect(mocks.listInboxes).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
@@ -225,14 +231,14 @@ describe("Mail.init — inbox discovery/creation", () => {
     );
 
     expect(err.message).toBe("Invalid email: not-an-email");
-    expect(mocks.search).not.toHaveBeenCalled();
+    expect(mocks.listInboxes).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it("reports a missing inbox without wrapping it as an API failure", async () => {
     // This is a validation error from our own code, not an SDK rejection,
     // so it must keep its original message.
-    mocks.search.mockResolvedValue({ inboxes: [] });
+    mocks.listInboxes.mockResolvedValue({ inboxes: [] });
 
     const err = await catchError(
       Inbox.init({ email: "news@example.com", createEmail: false }),
@@ -250,7 +256,7 @@ describe("Mail.init — API failures", () => {
 
   it("wraps a failed inbox search and does not try to create an inbox", async () => {
     const boom = new Error("search unavailable");
-    mocks.search.mockRejectedValueOnce(boom);
+    mocks.listInboxes.mockRejectedValueOnce(boom);
 
     const err = await catchError(
       Inbox.init({ email: "news@example.com", createEmail: true }),
@@ -270,7 +276,7 @@ describe("Mail.init — API failures", () => {
   });
 
   it("wraps a failed inbox creation", async () => {
-    mocks.search.mockResolvedValue({ inboxes: [] });
+    mocks.listInboxes.mockResolvedValue({ inboxes: [] });
     const boom = new Error("quota exceeded");
     mocks.create.mockRejectedValueOnce(boom);
 
@@ -285,7 +291,7 @@ describe("Mail.init — API failures", () => {
 
   it("handles a rejection that is not an Error instance", async () => {
     mocks.create.mockRejectedValueOnce("plain string reason");
-    mocks.search.mockResolvedValue({ inboxes: [] });
+    mocks.listInboxes.mockResolvedValue({ inboxes: [] });
 
     const err = await catchError(Inbox.init({ createEmail: true }));
 
@@ -302,20 +308,26 @@ describe("Mail.get — fetching full messages", () => {
   it("fetches the FULL message for every message id, across pages", async () => {
     // Arrange — the Mail constructor takes an inbox id directly.
     const inbox = new Inbox({ inboxId: "inbox-x", email: "" });
-    // Page 1: one summary, plus a token for the next page.
+    // Snapshot the request as it was at call time: mail.ts reuses and mutates
+    // the same request object across pages, so post-hoc assertions would see
+    // the final state instead of what each call actually received.
+    const requests: Array<Record<string, unknown>> = [];
     mocks.list
-      .mockResolvedValueOnce({
-        messages: [{ messageId: "m1" }],
-        nextPageToken: "next",
+      .mockImplementationOnce(async (_inboxId, request) => {
+        requests.push({ ...request });
+        return { messages: [{ messageId: "m1" }], nextPageToken: "next" };
       })
-      .mockResolvedValueOnce({ messages: [{ messageId: "m2" }] });
+      .mockImplementationOnce(async (_inboxId, request) => {
+        requests.push({ ...request });
+        return { messages: [{ messageId: "m2" }] };
+      });
     mocks.get.mockResolvedValue({ id: "full-message" });
 
     // Act
     const messages = await inbox.get();
 
     // Assert
-    expect(mocks.list).toHaveBeenCalledTimes(2); // followed the pagination token
+    expect(requests).toEqual([{}, { pageToken: "next" }]); // followed the token
     expect(mocks.get).toHaveBeenCalledTimes(2); // fetched one full message per id
     expect(mocks.get).toHaveBeenCalledWith("inbox-x", "m1");
     expect(mocks.get).toHaveBeenCalledWith("inbox-x", "m2");
@@ -431,5 +443,116 @@ describe("Mail.delete", () => {
     expect(err.message).toBe("delete message failed: message already gone");
     expect(err.cause).toBe(boom);
     expect(loggedMessages("debug")).not.toContain("message deleted");
+  });
+});
+
+describe("Mail.getStream — streaming full messages", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("yields the full message for every id, across pages", async () => {
+    const inbox = new Inbox({ inboxId: "inbox-x", email: "" });
+    const requests: Array<Record<string, unknown>> = [];
+    mocks.list
+      .mockImplementationOnce(async (_inboxId, request) => {
+        requests.push({ ...request });
+        return { messages: [{ messageId: "m1" }], nextPageToken: "next" };
+      })
+      .mockImplementationOnce(async (_inboxId, request) => {
+        requests.push({ ...request });
+        return { messages: [{ messageId: "m2" }] };
+      });
+    mocks.get.mockImplementation(async (_inboxId, messageId) => ({
+      id: messageId,
+    }));
+
+    const streamed = await collect(inbox.getStream());
+
+    expect(requests).toEqual([{}, { pageToken: "next" }]); // followed the token
+    expect(mocks.get).toHaveBeenCalledWith("inbox-x", "m1");
+    expect(mocks.get).toHaveBeenCalledWith("inbox-x", "m2");
+    // getStream yields promises; `for await` resolves them for the consumer.
+    expect(streamed).toEqual([{ id: "m1" }, { id: "m2" }]);
+  });
+
+  it("fetches nothing until the consumer pulls", async () => {
+    const inbox = new Inbox({ inboxId: "inbox-x", email: "" });
+    mocks.list.mockResolvedValue({ messages: [{ messageId: "m1" }] });
+    mocks.get.mockResolvedValue({ id: "m1" });
+
+    const stream = inbox.getStream();
+    expect(mocks.list).not.toHaveBeenCalled(); // async generators are lazy
+
+    await stream.next();
+
+    expect(mocks.list).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes from a caller-supplied page token", async () => {
+    const inbox = new Inbox({ inboxId: "inbox-x", email: "" });
+    const requests: Array<Record<string, unknown>> = [];
+    mocks.list.mockImplementationOnce(async (_inboxId, request) => {
+      requests.push({ ...request });
+      return { messages: [] };
+    });
+
+    await collect(inbox.getStream({ pageToken: "resume-here" }));
+
+    expect(requests).toEqual([{ pageToken: "resume-here" }]);
+  });
+
+  it("wraps a failed list call", async () => {
+    const boom = new Error("network down");
+    mocks.list.mockRejectedValueOnce(boom);
+    const inbox = new Inbox({ inboxId: "inbox-x", email: "" });
+
+    const err = await catchError(collect(inbox.getStream()));
+
+    expect(err.message).toBe("list messages failed: network down");
+    expect(err.cause).toBe(boom);
+  });
+
+  it("wraps a failed message fetch like get", async () => {
+    const boom = new Error("404 not found");
+    mocks.list.mockResolvedValueOnce({ messages: [{ messageId: "m1" }] });
+    mocks.get.mockRejectedValueOnce(boom);
+    const inbox = new Inbox({ inboxId: "inbox-x", email: "" });
+
+    const err = await catchError(collect(inbox.getStream()));
+
+    expect(err.message).toBe("get message failed: 404 not found");
+    expect(err.cause).toBe(boom);
+    expect(logMock.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "get message",
+        inbox_id: "inbox-x",
+        message_id: "m1",
+        err: boom,
+      }),
+      "get message failed",
+    );
+  });
+
+  it("logs the total message count, not just the last page", async () => {
+    const inbox = new Inbox({ inboxId: "inbox-x", email: "" });
+    mocks.list
+      .mockResolvedValueOnce({
+        messages: [{ messageId: "m1" }],
+        nextPageToken: "next",
+      })
+      .mockResolvedValueOnce({
+        messages: [{ messageId: "m2" }, { messageId: "m3" }],
+      });
+    mocks.get.mockImplementation(async (_inboxId, messageId) => ({
+      id: messageId,
+    }));
+
+    await collect(inbox.getStream());
+
+    expect(logMock.info).toHaveBeenCalledWith(
+      expect.objectContaining({ count: 3, pages: 2 }),
+      "fetched messages",
+    );
   });
 });

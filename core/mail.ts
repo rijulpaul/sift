@@ -83,8 +83,7 @@ export class Inbox {
           "search inboxes",
           { email: inboxConfig.email, page: pages + 1 },
           () =>
-            this.client.inboxes.search({
-              q: inboxConfig.email!,
+            this.client.inboxes.list({
               pageToken: next_page_token,
             }),
         );
@@ -143,14 +142,54 @@ export class Inbox {
     return new Inbox({ inboxId, email, displayName });
   };
 
-  public get = async (request?: ListMessagesRequest) => {
+  public async *getStream(request: ListMessagesRequest = {}) {
+    log.debug(
+      { inbox_id: this.inbox_id, request: request ?? "(default)" },
+      "fetching messages",
+    );
+
+    let pages = 0;
+    let total_messages = 0;
+
+    // Iterate over the list of messages and fetch the content.
+    // Not using batchGet because it doesnt provide inner content
+    do {
+      const res = await handleApiCall(
+        "list messages",
+        { inbox_id: this.inbox_id, page: pages + 1 },
+        () => Inbox.client.inboxes.messages.list(this.inbox_id, request),
+      );
+      log.debug(
+        { page: ++pages, count: res.messages.length },
+        "fetched message page",
+      );
+      total_messages += res.messages.length;
+      for (const message of res.messages) {
+        // Same handling as get(): a failed fetch is logged with the message id
+        // and rethrown wrapped, instead of surfacing raw to the consumer.
+        yield handleApiCall(
+          "get message",
+          { inbox_id: this.inbox_id, message_id: message.messageId },
+          () =>
+            Inbox.client.inboxes.messages.get(this.inbox_id, message.messageId),
+        );
+      }
+      request.pageToken = res?.nextPageToken || undefined;
+    } while (request.pageToken);
+
+    log.info(
+      { inbox_id: this.inbox_id, count: total_messages, pages },
+      "fetched messages",
+    );
+  }
+
+  public get = async (request: ListMessagesRequest = {}) => {
     log.debug(
       { inbox_id: this.inbox_id, request: request ?? "(default)" },
       "fetching messages",
     );
 
     const messages: any[] = [];
-    let next_page_token: string | undefined;
     let pages = 0;
 
     // Iterate over the list of messages and fetch the content.
@@ -178,8 +217,8 @@ export class Inbox {
           ),
         );
       }
-      next_page_token = res?.nextPageToken || undefined;
-    } while (next_page_token);
+      request.pageToken = res?.nextPageToken || undefined;
+    } while (request.pageToken);
 
     log.info(
       { inbox_id: this.inbox_id, count: messages.length, pages },
