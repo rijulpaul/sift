@@ -54,24 +54,26 @@ for (const [key, definition] of Object.entries(completions)) {
 
 const args = parser.parse_args() as ConfigOverrides & { launcher: boolean };
 
-const defaultsPath = fileURLToPath(new URL("./config/defaults.json", import.meta.url));
+const defaultsPath = fileURLToPath(
+  new URL("./config/defaults.json", import.meta.url),
+);
 if (!existsSync(defaultsPath)) {
-  await createConfig()
+  await createConfig();
 }
 
-let config
+let config;
 if (args.launcher) {
   config = await runLauncher(args);
 } else {
   config = resolveConfig(args);
 }
 
-validateConfig(config)
+validateConfig(config);
 
-const core = await SiftCore.init(config)
+const core = await SiftCore.init(config);
 
 if (config.tui) {
-  await startTui(core, { onExit: () => process.exit(0) })
+  await startTui(core, { onExit: () => process.exit(0) });
 }
 if (config.webui) {
   const vite = Bun.spawn({

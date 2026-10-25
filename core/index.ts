@@ -91,7 +91,7 @@ export class SiftCore {
         recievedAt: message.timestamp,
         labels: message.labels,
         text: message.text,
-        body: processedContent
+        body: processedContent,
       };
 
       log.info(
@@ -101,7 +101,7 @@ export class SiftCore {
         "messages ready",
       );
 
-      yield cleanedMessage
+      yield cleanedMessage;
     }
   }
 
@@ -129,7 +129,7 @@ export class SiftCore {
         recievedAt: message.timestamp,
         labels: message.labels,
         text: message.text,
-        body: processedContent
+        body: processedContent,
       };
       cleanedMessages.push(fullMessage);
     }

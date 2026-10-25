@@ -15,10 +15,10 @@ export const logger = pino({
     target: isPrettyLog ? "pino-pretty" : "pino/file",
     options: {
       destination: logFile,
-      mkdir: true
+      mkdir: true,
     },
   },
 });
 
 if (!isTest && process.env.LOG_LEVEL !== "silent")
-  console.log(`Logs being written to ${logFile}`)
+  console.log(`Logs being written to ${logFile}`);

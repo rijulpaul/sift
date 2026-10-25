@@ -134,7 +134,7 @@ const configure = async (
   p.log.success("Configuration saved to config/defaults.json");
 };
 
-export const createConfig = () => configure(readRawConfig())
+export const createConfig = () => configure(readRawConfig());
 
 const start = async (overrides: ConfigOverrides): Promise<Config> => {
   const config = resolveConfig(overrides);
