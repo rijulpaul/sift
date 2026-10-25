@@ -1,3 +1,5 @@
+./config/defaults.json
+
 # Vitest reports and artifacts
 .vitest/
 
