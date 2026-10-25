@@ -1,15 +1,32 @@
-import { createAgent } from "langchain";
+import type { createAgent } from "langchain";
+
 import { BaseAgent } from "../BaseAgent";
 import { getModel, type ModelInfo } from "../model";
 import { describeImagePrompt } from "./prompt";
 
 export class DescribeImageAgent extends BaseAgent<string, string | undefined> {
-  constructor(modelInfo: ModelInfo) {
+  /**
+   * Build the agent. Async because `langchain` and the provider SDK are
+   * imported here rather than at module load, which keeps them off the
+   * startup path.
+   */
+  static async create(modelInfo: ModelInfo): Promise<DescribeImageAgent> {
+    const [{ createAgent }, model] = await Promise.all([
+      import("langchain"),
+      getModel(modelInfo),
+    ]);
+
+    return new DescribeImageAgent(
+      createAgent({
+        model,
+        systemPrompt: describeImagePrompt,
+      }),
+    );
+  }
+
+  private constructor(agent: ReturnType<typeof createAgent>) {
     super({ agentName: "Describe Image" });
-    this.agent = createAgent({
-      model: getModel(modelInfo),
-      systemPrompt: describeImagePrompt,
-    });
+    this.agent = agent;
   }
 
   protected async *execute(url: string): AsyncGenerator<string, void, void> {

@@ -1,3 +1,4 @@
+import type { ListMessagesRequest } from "agentmail/inboxes";
 import type { Config } from "../config/config";
 import { NewsletterSummarizationAgent } from "./agent";
 import { logger } from "./logger";
@@ -9,7 +10,8 @@ const log = logger.child({ module: "core" });
 export class SiftCore {
   public inbox;
   public readonly config;
-  private agent;
+
+  private agentPromise: Promise<NewsletterSummarizationAgent> | null = null;
 
   public static async init(config: Config) {
     log.debug({ config }, "starting sift core");
@@ -33,34 +35,82 @@ export class SiftCore {
         "processImages is enabled but vision settings are incomplete, image descriptions will fail",
       );
     }
-
-    log.debug(
-      {
-        llm: `${config.llmProvider}/${config.llmName}`,
-        processImages: config.processImages,
-      },
-      "configuring summarization agent",
-    );
-
-    this.agent = new NewsletterSummarizationAgent(
-      {
-        model: config.llmName!,
-        modelProvider: config.llmProvider!,
-      },
-      {
-        vlmProvider: config.vlmProvider,
-        vlmName: config.vlmName,
-        processImages: config.processImages,
-      },
-    );
   }
 
-  async getMessages({ labels }: { labels?: string[] }) {
+  /**
+   * Load the agent ahead of the first summary, without blocking startup.
+   * Call it once the UI is up and idle. Safe to call repeatedly.
+   */
+  public async warmup(): Promise<void> {
+    try {
+      await this.getAgent();
+    } catch (error) {
+      // Advisory only: report it, and let summarize() surface the real failure.
+      log.warn({ err: error }, "agent warmup failed");
+    }
+  }
+
+  private getAgent(): Promise<NewsletterSummarizationAgent> {
+    this.agentPromise ??= NewsletterSummarizationAgent.create(
+      {
+        model: this.config.llmName!,
+        modelProvider: this.config.llmProvider!,
+      },
+      {
+        vlmProvider: this.config.vlmProvider,
+        vlmName: this.config.vlmName,
+        processImages: this.config.processImages,
+      },
+    ).catch((error: unknown) => {
+      // Never cache a failure, so the next summarize() gets a fresh attempt.
+      this.agentPromise = null;
+      throw error;
+    });
+
+    return this.agentPromise;
+  }
+
+  public async *getMessagesStream(request?: ListMessagesRequest) {
     const startedAt = Date.now();
 
-    log.debug({ labels: labels ?? "(all)" }, "loading messages");
+    log.debug({ labels: request?.labels ?? "(all)" }, "loading messages");
 
-    const messages = await this.inbox.get({ labels });
+    for await (const message of this.inbox.getStream(request)) {
+      if (!message.html) {
+        log.warn(
+          { message_id: message.messageId },
+          "message has no html content",
+        );
+      }
+
+      const processedContent = processNewsletter(message.html!);
+      const cleanedMessage = {
+        id: message.messageId,
+        from: message.from,
+        subject: message.subject,
+        recievedAt: message.timestamp,
+        labels: message.labels,
+        text: message.text,
+        body: processedContent
+      };
+
+      log.info(
+        {
+          durationMs: Date.now() - startedAt,
+        },
+        "messages ready",
+      );
+
+      yield cleanedMessage
+    }
+  }
+
+  async getMessages(request?: ListMessagesRequest) {
+    const startedAt = Date.now();
+
+    log.debug({ labels: request?.labels ?? "(all)" }, "loading messages");
+
+    const messages = await this.inbox.get(request);
     const cleanedMessages: any[] = [];
 
     for (const message of messages) {
@@ -72,15 +122,16 @@ export class SiftCore {
       }
 
       const processedContent = processNewsletter(message.html);
-      const cleanedMessage = {
-        message_id: message.messageId,
+      const fullMessage = {
+        id: message.messageId,
         from: message.from,
         subject: message.subject,
-        timestamp: message.timestamp,
+        recievedAt: message.timestamp,
         labels: message.labels,
-        content: processedContent,
+        text: message.text,
+        body: processedContent
       };
-      cleanedMessages.push(cleanedMessage);
+      cleanedMessages.push(fullMessage);
     }
 
     log.info(
@@ -107,10 +158,12 @@ export class SiftCore {
       "summarizing newsletter",
     );
 
+    const agent = await this.getAgent();
+
     // No try/catch here: BaseAgent.invoke already logs the failure with the
     // agent name, and a catch would also catch errors thrown by the caller
     // while consuming this generator, mislabelling them as agent failures.
-    for await (const chunk of this.agent.invoke(message)) {
+    for await (const chunk of agent.invoke(message)) {
       chunks++;
 
       yield {

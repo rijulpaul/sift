@@ -103,56 +103,41 @@ export const summarizeNewsletterPrompt = `
 
   ## Output
 
-  Return structured output with the following fields:
+  Return structured output (JSON) with the following fields:
 
   {
     "title": "...",
-    "summary": "...",
-    "key_points": [
-      "...",
-      "..."
-    ],
-    "links": [RESOURCE_ID],
-    "images": [RESOURCE_ID]
+    "content": [
+      {
+        "type": "text",
+        "text": ""
+      },
+      {
+        "type": "image",
+        "url": "url"
+      }
+    ]
   }
 
   ### title
 
   A short descriptive title for the summary.
 
-  ### summary
+  ### content
 
-  A concise overview of the newsletter's main content.
+  A concise overview of the newsletter's main content represented as sequence of small paragraphs and optionally images in a json array.
 
-  Do not repeat the key points word-for-word.
+  **Text representation:**
+  {
+    "type": "text",
+    "text": ""
+  }
 
-  ### key_points
-
-  A small number of the most important points.
-
-  Each point should communicate a meaningful piece of information rather than simply describing what the article is about.
-
-  Prefer concrete information over generic statements.
-
-  ### links
-
-  Include resource IDs for links that are directly relevant to the summarized information.
-
-  Do not include:
-
-  - Navigation links
-  - Social media links
-  - Unsubscribe links
-  - Advertisement links
-  - Irrelevant links
-
-  ### images
-
-  Include resource IDs only for images that materially improve the summary.
-
-  For example, include a chart if the chart contains important information that supports or explains a key point.
-
-  Do not include decorative images.
+  **Image representation:**
+  {
+    "type": "image",
+    "url": "url"
+  }
 
   ## Style
 
@@ -199,14 +184,6 @@ const image = `
   Example:
 
   ![Model architecture](RESOURCE_4)
-
-  The image may also have metadata such as:
-
-  - Alt text
-  - Title
-  - Dimensions
-  - Surrounding text
-  - Image type
 
   Use this information when deciding whether the image is relevant.
 

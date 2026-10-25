@@ -21,7 +21,7 @@ export const getUrlContext = tool(
           "Vision settings (vlm_provider, vlm_name) are not configured, but image processing was requested",
         );
       }
-      const describeImageAgent = new DescribeImageAgent({
+      const describeImageAgent = await DescribeImageAgent.create({
         modelProvider: toolConfig.vlmProvider,
         model: toolConfig.vlmName,
       });
