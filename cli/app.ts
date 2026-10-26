@@ -17,6 +17,7 @@ import { MailPreview } from "./components/MailPreview";
 import { StatusBar } from "./components/StatusBar";
 import { resolveCommand, type Command } from "./keymap";
 import { computeLayout, type LayoutSpec } from "./layout";
+import { accountLabel } from "./lib/format";
 import { toMailSummary } from "./lib/mail";
 import {
   Store,
@@ -80,6 +81,10 @@ export class App implements TuiHandle {
         this.store.dispatch({ type: "askDelete", ask: false }),
     });
     this.statusBar = new StatusBar(renderer);
+    // The account is fixed for the session: set it once, not on every render.
+    this.statusBar.setAccount(
+      accountLabel(this.core.inbox.email, this.core.inbox.displayName),
+    );
 
     this.mount();
   }

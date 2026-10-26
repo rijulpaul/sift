@@ -19,6 +19,8 @@ export interface MockMessage {
 export interface MockCoreOptions {
   messages?: MockMessage[];
   config?: Partial<Config>;
+  /** The account the TUI shows, as it would read it from the core's inbox. */
+  inbox?: { email?: string; displayName?: string };
   /** Delay before each streamed message, summary chunk and label/delete call. */
   delayMs?: number;
   summaryChunks?: string[];
@@ -156,6 +158,11 @@ export function createMockCore(options: MockCoreOptions = {}): {
 
   const fake = {
     config,
+    inbox: {
+      inbox_id: "inbox-mock",
+      email: options.inbox?.email ?? "news@example.com",
+      displayName: options.inbox?.displayName,
+    },
 
     async *getMessagesStream(request?: { labels?: string[] }) {
       calls.lists.push({ ...request });

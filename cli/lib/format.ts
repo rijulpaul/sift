@@ -64,6 +64,26 @@ export function formatListTime(date: Date, now: Date = new Date()): string {
     : `${md} ${date.getFullYear()}`;
 }
 
+/** The local part of an address: `rijulpaul` from `rijulpaul@agentmail.to`. */
+export function usernameOf(email: string): string {
+  const [local = ""] = email.split("@");
+  return local || email;
+}
+
+/**
+ * The account as one short line: the username (or display name) and the
+ * address. Empty when there is no address to show.
+ */
+export function accountLabel(
+  email: string | undefined,
+  displayName?: string,
+): string {
+  const address = (email ?? "").trim();
+  if (address === "") return "";
+  const username = (displayName ?? "").trim() || usernameOf(address);
+  return `${username} · ${address}`;
+}
+
 /** Full timestamp for the preview header, e.g. `Mon, Mar 4 2024 14:32`. */
 export function formatFullDate(date: Date): string {
   if (!isValid(date)) return "";

@@ -550,6 +550,29 @@ describe("TUI — mouse filter and layout (split)", () => {
   });
 });
 
+describe("TUI — account", () => {
+  it("shows the username and address in the footer", async () => {
+    const { t } = await startAll({
+      inbox: { email: "rijulpaul@agentmail.to", displayName: "Rijul" },
+    });
+
+    const screen = await until(t, (f) =>
+      f.includes("Rijul · rijulpaul@agentmail.to"),
+    );
+
+    expect(screen).toContain("Rijul · rijulpaul@agentmail.to");
+  });
+
+  it("leaves the account out when the footer is too narrow", async () => {
+    const { t } = await startAll({}, { width: 60, height: 14 });
+
+    const screen = await until(t, (f) => f.includes("Inbox (6)"));
+
+    expect(screen).not.toContain("news@example.com");
+    expect(screen).toContain("enter");
+  });
+});
+
 describe("TUI — stacked layout", () => {
   const narrow = { width: 60, height: 14 };
 

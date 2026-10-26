@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  accountLabel,
   formatFullDate,
   formatListTime,
   parseSender,
   senderLabel,
+  usernameOf,
 } from "../../cli/lib/format";
 
 describe("parseSender", () => {
@@ -80,5 +82,38 @@ describe("formatFullDate", () => {
 
   it("returns an empty string for an invalid date", () => {
     expect(formatFullDate(new Date("nope"))).toBe("");
+  });
+});
+
+describe("usernameOf", () => {
+  it("takes the local part of an address", () => {
+    expect(usernameOf("rijulpaul@agentmail.to")).toBe("rijulpaul");
+  });
+
+  it("keeps a value that has no domain", () => {
+    expect(usernameOf("rijulpaul")).toBe("rijulpaul");
+  });
+});
+
+describe("accountLabel", () => {
+  it("shows the username and the address", () => {
+    expect(accountLabel("rijulpaul@agentmail.to")).toBe(
+      "rijulpaul · rijulpaul@agentmail.to",
+    );
+  });
+
+  it("prefers the display name for the username", () => {
+    expect(accountLabel("rijulpaul@agentmail.to", "Rijul")).toBe(
+      "Rijul · rijulpaul@agentmail.to",
+    );
+  });
+
+  it("ignores a blank display name", () => {
+    expect(accountLabel("ada@x.io", "   ")).toBe("ada · ada@x.io");
+  });
+
+  it("is empty when there is no address", () => {
+    expect(accountLabel(undefined)).toBe("");
+    expect(accountLabel("  ")).toBe("");
   });
 });

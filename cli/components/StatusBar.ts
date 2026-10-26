@@ -16,7 +16,11 @@ export class StatusBar {
   readonly root: BoxRenderable;
 
   private readonly hints: BoxRenderable;
+  private readonly right: BoxRenderable;
+  private readonly account: TextRenderable;
   private readonly status: TextRenderable;
+  private accountText = "";
+  private accountShown = false;
   private shownKey = "";
   private counter = 0;
   private readonly ctx: RenderContext;
@@ -50,11 +54,36 @@ export class StatusBar {
       fg: theme.muted,
       wrapMode: "none",
       flexShrink: 0,
-      marginLeft: 2,
     });
 
+    // Faint, between the hints and the counts: visible but easy to ignore.
+    this.account = new TextRenderable(ctx, {
+      id: "status-account",
+      content: "",
+      fg: theme.faint,
+      wrapMode: "none",
+      flexShrink: 0,
+      visible: false,
+    });
+
+    // The account sits just left of the counts, at the right edge.
+    this.right = new BoxRenderable(ctx, {
+      id: "status-right",
+      flexDirection: "row",
+      gap: 2,
+      flexShrink: 0,
+      backgroundColor: theme.bg,
+    });
+    this.right.add(this.account);
+    this.right.add(this.status);
+
     this.root.add(this.hints);
-    this.root.add(this.status);
+    this.root.add(this.right);
+  }
+
+  /** The account line, shown when the footer has room for it. */
+  setAccount(label: string): void {
+    this.accountText = label;
   }
 
   /** `width` is the terminal width; hints that don't fit are dropped whole. */
@@ -65,10 +94,22 @@ export class StatusBar {
     this.status.attributes = state.notice ? attr.bold : attr.none;
 
     const set: HintSet = state.confirmingDelete ? "confirm" : state.focus;
-    this.setHints(
-      set,
-      width - 2 /* padding */ - textWidth(status) - 2 /* gap */,
-    );
+    const available = width - 2 /* padding */ - textWidth(status) - 2; /* gap */
+    const usedByHints = this.setHints(set, available);
+
+    // The account is the least important thing here, so it goes first.
+    this.showAccount(available - usedByHints);
+  }
+
+  /** Show the account only if it still fits beside the hints. */
+  private showAccount(remaining: number): void {
+    const show =
+      this.accountText !== "" && textWidth(this.accountText) + 2 <= remaining;
+    if (show === this.accountShown) return;
+
+    this.accountShown = show;
+    this.account.visible = show;
+    if (show) this.account.content = this.accountText;
   }
 
   private describe(state: State): string {
@@ -87,7 +128,8 @@ export class StatusBar {
     }
   }
 
-  private setHints(set: HintSet, available: number): void {
+  /** Fits the hints to `available` columns and returns the width they used. */
+  private setHints(set: HintSet, available: number): number {
     // Keep the highest-priority hints (listed first) that fit in one row.
     const visible: Array<readonly [string, string]> = [];
     let used = 0;
@@ -103,7 +145,7 @@ export class StatusBar {
     }
 
     const key = `${set}:${visible.length}`;
-    if (key === this.shownKey) return;
+    if (key === this.shownKey) return used;
     this.shownKey = key;
 
     for (const child of this.hints.getChildren()) {
@@ -136,5 +178,7 @@ export class StatusBar {
       );
       this.hints.add(hint);
     }
+
+    return used;
   }
 }
