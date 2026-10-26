@@ -2,7 +2,7 @@ import { ArgumentParser } from "argparse";
 
 import completions from "./config/completions.json" with { type: "json" };
 import type { ConfigOverrides } from "./config/loader";
-import { resolveConfig, validateConfig } from "./config/loader";
+import { persistEmail, resolveConfig, validateConfig } from "./config/loader";
 import { SiftCore } from "./core";
 import { createConfig, runLauncher } from "./launcher";
 import { startTui } from "./cli";
@@ -71,6 +71,14 @@ if (args.launcher) {
 validateConfig(config);
 
 const core = await SiftCore.init(config);
+
+// No email was configured, so the core created an inbox for us (a random one,
+// or one built from the requested address). Save that address, otherwise the
+// next run creates yet another inbox and we lose the old one.
+if (config.email !== core.inbox.email) {
+  config.email = core.inbox.email;
+  persistEmail(core.inbox.email);
+}
 
 if (config.tui) {
   await startTui(core, { onExit: () => process.exit(0) });

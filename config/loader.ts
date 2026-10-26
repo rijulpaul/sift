@@ -72,6 +72,18 @@ export const writeRawConfig = (config: RawConfig): void => {
   writeFileSync(defaultsPath, `${JSON.stringify(config, null, 2)}\n`);
 };
 
+/**
+ * Save the address the core ended up with. When no email is configured the
+ * core creates an inbox, and without this the next run would create another
+ * one and the first would be unreachable.
+ */
+export const persistEmail = (email: string | undefined): void => {
+  const address = (email ?? "").trim();
+  if (address === "") return;
+
+  writeRawConfig({ ...readRawConfig(), email: address });
+};
+
 export const toSnakeCase = (key: string): string =>
   key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 

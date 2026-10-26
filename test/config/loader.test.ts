@@ -11,10 +11,11 @@ vi.mock("node:fs", () => ({
   writeFileSync: vi.fn(),
 }));
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import {
   assertConfigFileComplete,
+  persistEmail,
   readRawConfig,
   resolveConfig,
   validateConfig,
@@ -24,6 +25,14 @@ import type { Config } from "../../config/config";
 const fs = {
   existsSync: vi.mocked(existsSync),
   readFileSync: vi.mocked(readFileSync),
+  writeFileSync: vi.mocked(writeFileSync),
+};
+
+/** The raw config the loader last wrote to defaults.json. */
+const written = () => {
+  const contents = fs.writeFileSync.mock.calls.at(-1)?.[1] as
+    string | undefined;
+  return JSON.parse(contents ?? "{}") as Record<string, unknown>;
 };
 
 /** A defaults.json containing every known setting. */
@@ -220,5 +229,44 @@ describe("validateConfig — vision settings", () => {
 
     expect(err.message).toMatch(/was not found/);
     expect(err.message).not.toMatch(/Missing configuration for/);
+  });
+});
+
+describe("persistEmail", () => {
+  it("writes the created address without losing the other settings", () => {
+    givenFile(completeRaw);
+
+    persistEmail("fresh@agentmail.to");
+
+    expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+    expect(written()).toEqual({ ...completeRaw, email: "fresh@agentmail.to" });
+  });
+
+  it("trims the address", () => {
+    givenFile(completeRaw);
+
+    persistEmail("  fresh@agentmail.to  ");
+
+    expect(written().email).toBe("fresh@agentmail.to");
+  });
+
+  it("writes nothing when there is no address", () => {
+    givenFile(completeRaw);
+
+    persistEmail(undefined);
+    persistEmail("   ");
+
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it("leaves a complete file complete", () => {
+    givenFile(completeRaw);
+    persistEmail("fresh@agentmail.to");
+
+    fs.readFileSync.mockReturnValue(
+      fs.writeFileSync.mock.calls[0]?.[1] as string,
+    );
+
+    expect(() => assertConfigFileComplete()).not.toThrow();
   });
 });
