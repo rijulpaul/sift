@@ -103,7 +103,7 @@ export const summarizeNewsletterPrompt = `
 
   ## Output
 
-  Return structured output (JSON) with the following fields:
+  Returned content should strictly be in JSON format (no markdown code blocks) with the following fields:
 
   {
     "title": "...",
@@ -133,11 +133,40 @@ export const summarizeNewsletterPrompt = `
     "text": ""
   }
 
-  **Image representation:**
+  **Image representation:** (use only when tools for image understanding are available)
   {
     "type": "image",
     "url": "url"
   }
+
+  ## Images (use only when tools for image understanding are available)
+
+  Use this information when deciding whether the image is relevant and should be shown.
+
+  If the image itself may contain information that is important to understanding the newsletter.
+
+  Examples of images worth showing:
+
+  - Charts
+  - Graphs
+  - Diagrams
+  - Tables
+  - Screenshots
+  - Technical figures
+  - Infographics
+  - Images containing important text
+
+  Images not worth showing:
+
+  - Logos
+  - Decorative images
+  - Tracking pixels
+  - Social media icons
+  - Generic stock photos
+  - Advertisements
+  - Newsletter branding
+
+  When an image is analyzed, decide based on the output whether to use that image in the summary or not
 
   ## Style
 
@@ -174,42 +203,4 @@ export const summarizeNewsletterPrompt = `
   The goal is not to summarize everything.
 
   The goal is to preserve the most useful information from the newsletter in a concise form.
-`;
-
-const image = `
-  ## Images
-
-  Images embedded in the newsletter are represented using resource IDs.
-
-  Example:
-
-  ![Model architecture](RESOURCE_4)
-
-  Use this information when deciding whether the image is relevant.
-
-  If the image itself may contain information that is important to understanding the newsletter, use the image-analysis tool.
-
-  Examples of images worth inspecting:
-
-  - Charts
-  - Graphs
-  - Diagrams
-  - Tables
-  - Screenshots
-  - Technical figures
-  - Infographics
-  - Images containing important text
-
-  Images that are usually not worth inspecting:
-
-  - Logos
-  - Decorative images
-  - Tracking pixels
-  - Social media icons
-  - Generic stock photos
-  - Advertisements
-  - Newsletter branding
-
-  When an image is analyzed, treat the returned analysis as additional source material. Do not invent information beyond what the image analysis provides.
-
 `;
