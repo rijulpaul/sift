@@ -1,4 +1,4 @@
-import type { createAgent } from "langchain";
+import { AIMessageChunk, type createAgent } from "langchain";
 import * as z from "zod";
 
 import {
@@ -120,9 +120,19 @@ export class NewsletterSummarizationAgent extends BaseAgent<
       },
     );
 
-    for await (const [message, _] of stream) {
-      if (typeof message.content === "string" && message.content.length > 0) {
-        yield message.content;
+    for await (const [message, metadata] of stream) {
+      const ns = (metadata?.langgraph_checkpoint_ns as string) ?? "";
+
+      // Subagent runs happen inside the tools node, so their namespace is nested,
+      // e.g. "tools:abc|model_request:def". The main agent's is just "model_request:xyz".
+      if (ns.includes("|")) continue;
+
+      // Only the main agent's model node (not tool results)
+      if (metadata?.langgraph_node !== "model_request") continue;
+
+      if (AIMessageChunk.isInstance(message) && message.text) {
+        process.stdout.write(message.text);
+        yield message.text
       }
     }
   }
