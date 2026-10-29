@@ -78,7 +78,7 @@ export class NewsletterSummarizationAgent extends BaseAgent<
     modelInfo: ModelInfo,
     toolConfig: ToolConfig,
   ): Promise<NewsletterSummarizationAgent> {
-    const [{ createAgent }, { getUrlContext }, model] = await Promise.all([
+    const [{ createAgent }, { describeImage }, model] = await Promise.all([
       import("langchain"),
       import("./tools"),
       getModel(modelInfo),
@@ -88,7 +88,7 @@ export class NewsletterSummarizationAgent extends BaseAgent<
       toolConfig,
       createAgent({
         model,
-        tools: toolConfig.processImages ? [getUrlContext] : [],
+        tools: toolConfig.processImages ? [describeImage] : [],
         systemPrompt,
         contextSchema,
       }),

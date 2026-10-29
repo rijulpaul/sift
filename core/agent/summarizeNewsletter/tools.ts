@@ -4,7 +4,9 @@ import type { MaskedUrl } from "../../process";
 import { DescribeImageAgent } from "../describeImage/agent";
 import type { context, ToolConfig } from "./agent";
 
-export const getUrlContext = tool(
+let describeImageAgent: DescribeImageAgent | undefined;
+
+export const describeImage = tool(
   async (link_id, config) => {
     const linkId = link_id.toLowerCase().startsWith("link_")
       ? Number(link_id.toLowerCase().replace("link_", ""))
@@ -21,15 +23,17 @@ export const getUrlContext = tool(
           "Vision settings (vlm_provider, vlm_name) are not configured, but image processing was requested",
         );
       }
-      const describeImageAgent = await DescribeImageAgent.create({
-        modelProvider: toolConfig.vlmProvider,
-        model: toolConfig.vlmName,
-      });
+      if (!describeImageAgent) {
+        describeImageAgent = await DescribeImageAgent.create({
+          modelProvider: toolConfig.vlmProvider,
+          model: toolConfig.vlmName,
+        });
+      }
 
       // invoke() is an async generator; collect its chunks into the full text.
       let description = "";
-      for await (const chunk of describeImageAgent.invoke(link.url)) {
-        description += chunk;
+      for await (const message of describeImageAgent.invoke(link.url)) {
+        description += message
       }
       return description;
     } else {
@@ -37,7 +41,7 @@ export const getUrlContext = tool(
     }
   },
   {
-    name: "get_url_context",
+    name: "describe_image",
     description:
       // "Given a LINK_{ID} get the real Link",
       "Given a LINK_{ID}, get the description of resource present in the original link if it is a valid Image",
