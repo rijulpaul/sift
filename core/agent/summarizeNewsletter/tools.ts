@@ -33,7 +33,7 @@ export const describeImage = tool(
       // invoke() is an async generator; collect its chunks into the full text.
       let description = "";
       for await (const message of describeImageAgent.invoke(link.url)) {
-        description += message
+        description += message;
       }
       return description;
     } else {

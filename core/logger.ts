@@ -8,8 +8,8 @@ const logFile = `./logs/${date}.log`;
 
 const options = {
   destination: logFile,
-  mkdir: true
-}
+  mkdir: true,
+};
 
 export const logger = pino({
   level: isTest
@@ -18,7 +18,10 @@ export const logger = pino({
 
   transport: {
     target: isPrettyLog ? "pino-pretty" : "pino/file",
-    options: (!process.env.LOG_LEVEL || process.env.LOG_LEVEL === "silent") ? undefined : options,
+    options:
+      !process.env.LOG_LEVEL || process.env.LOG_LEVEL === "silent"
+        ? undefined
+        : options,
   },
 });
 

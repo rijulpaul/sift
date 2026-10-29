@@ -132,7 +132,7 @@ export class NewsletterSummarizationAgent extends BaseAgent<
 
       if (AIMessageChunk.isInstance(message) && message.text) {
         process.stdout.write(message.text);
-        yield message.text
+        yield message.text;
       }
     }
   }
