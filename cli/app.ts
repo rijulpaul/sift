@@ -18,7 +18,7 @@ import { StatusBar } from "./components/StatusBar";
 import { resolveCommand, type Command } from "./keymap";
 import { computeLayout, type LayoutSpec } from "./layout";
 import { accountLabel } from "./lib/format";
-import { toMailSummary } from "./lib/mail";
+import { toMailBody, toMailSummary } from "./lib/mail";
 import {
   Store,
   initialState,
@@ -27,7 +27,7 @@ import {
   type State,
 } from "./state";
 import { theme } from "./theme";
-import type { MailSummary, TuiHandle, TuiOptions } from "./types";
+import type { TuiHandle, TuiOptions } from "./types";
 
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -114,13 +114,14 @@ export class App implements TuiHandle {
     this.store.dispatch({ type: "loadStart", filter });
 
     try {
-      const stream = this.core.getMessagesStream(requestFor(filter));
-      for await (const message of stream) {
+      // Rows only: a body is fetched when a message is opened.
+      const stream = this.core.listMessages(requestFor(filter));
+      for await (const item of stream) {
         // A newer load started, or the TUI closed: stop pulling.
         if (token !== this.loadToken || this.destroyed) break;
         this.store.dispatch({
           type: "mailArrived",
-          mail: toMailSummary(message),
+          mail: toMailSummary(item),
         });
       }
       if (token === this.loadToken) this.store.dispatch({ type: "loaded" });
@@ -204,6 +205,7 @@ export class App implements TuiHandle {
         ? {
             kind: "mail",
             mail: open,
+            body: state.bodies[open.id],
             showSummary: state.showSummary,
             summary: state.summaries[open.id],
             confirming: state.confirmingDelete,
@@ -377,7 +379,32 @@ export class App implements TuiHandle {
     this.store.dispatch({ type: "open", index, showSummary: summarize });
 
     if (markAsRead && mail.unread) void this.setUnread(mail.id, false);
-    if (summarize) void this.summarize(mail.id);
+
+    // The row carries no body, so it is fetched now; summarising waits for it.
+    void this.loadBody(mail.id).then(() => {
+      if (summarize) void this.summarize(mail.id);
+    });
+  }
+
+  /**
+   * Fetch a message's body, unless it is already here. Opening the same message
+   * again never refetches, and a failed fetch can be retried the same way.
+   */
+  private async loadBody(id: string): Promise<void> {
+    const existing = this.store.getState().bodies[id];
+    if (existing?.status === "ready") return;
+
+    this.store.dispatch({ type: "bodyStart", id });
+    try {
+      const detail = await this.core.getMessage(id);
+      this.store.dispatch({ type: "bodyLoaded", id, body: toMailBody(detail) });
+    } catch (error) {
+      this.store.dispatch({
+        type: "bodyFailed",
+        id,
+        message: errorMessage(error),
+      });
+    }
   }
 
   /** Summary button / `s`: switch between the summary and the text, summarizing on first use. */
@@ -390,20 +417,23 @@ export class App implements TuiHandle {
       return;
     }
     this.store.dispatch({ type: "setShowSummary", showSummary: true });
-    void this.summarize(state.openId);
+
+    const id = state.openId;
+    void this.loadBody(id).then(() => this.summarize(id));
   }
 
   /** Stream the summary of one mail into the store. A finished summary is reused. */
   private async summarize(id: string): Promise<void> {
-    const mail = this.store.getState().mails.find((m) => m.id === id);
-    if (!mail) return;
+    const body = this.store.getState().bodies[id];
+    // Without a body there is nothing to summarise yet.
+    if (body?.status !== "ready") return;
 
     const existing = this.store.getState().summaries[id];
     if (existing && existing.status !== "error") return; // streaming or done
 
     this.store.dispatch({ type: "summaryStart", id });
     try {
-      for await (const event of this.core.summarize(mail.content)) {
+      for await (const event of this.core.summarize(body.body.content)) {
         if (!event.done && event.chunk) {
           this.store.dispatch({ type: "summaryChunk", id, chunk: event.chunk });
         }

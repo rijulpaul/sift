@@ -8,6 +8,26 @@ import { processNewsletter, type MaskedContent } from "./process";
 
 const log = logger.child({ module: "core" });
 
+/** One row of the message list: everything the list needs, and no body. */
+export interface MessageListItem {
+  id: string;
+  from: string;
+  subject: string;
+  receivedAt: Date;
+  labels: string[];
+}
+
+/** A whole message, body included. */
+export interface MessageDetail {
+  id: string;
+  from: string;
+  subject: string;
+  receivedAt: Date;
+  labels: string[];
+  text: string;
+  body: MaskedContent;
+}
+
 export class SiftCore {
   public inbox;
   public readonly config;
@@ -71,80 +91,62 @@ export class SiftCore {
     return this.agentPromise;
   }
 
-  public async *getMessagesStream(request?: ListMessagesRequest) {
+  /**
+   * The message list: one row per message, streamed as the pages arrive, with
+   * no bodies. A row is what the list needs; the body is fetched only when a
+   * message is actually opened, by `getMessage`.
+   */
+  public async *listMessages(
+    request?: ListMessagesRequest,
+  ): AsyncGenerator<MessageListItem, void, void> {
     const startedAt = Date.now();
+    let count = 0;
 
-    log.debug({ labels: request?.labels ?? "(all)" }, "loading messages");
+    log.debug({ labels: request?.labels ?? "(all)" }, "listing messages");
 
-    for await (const message of this.inbox.getStream(request)) {
-      if (!message.html) {
-        log.warn(
-          { message_id: message.messageId },
-          "message has no html content",
-        );
-      }
+    for await (const message of this.inbox.listMessages(request)) {
+      count++;
 
-      const processedContent = processNewsletter(message.html!);
-      const cleanedMessage = {
+      yield {
         id: message.messageId,
         from: message.from,
-        subject: message.subject,
-        recievedAt: message.timestamp,
-        labels: message.labels,
-        text: message.text,
-        body: processedContent,
+        subject: message.subject ?? "",
+        receivedAt: message.timestamp,
+        labels: message.labels ?? [],
       };
-
-      log.info(
-        {
-          durationMs: Date.now() - startedAt,
-        },
-        "messages ready",
-      );
-
-      yield cleanedMessage;
     }
+
+    log.info({ count, durationMs: Date.now() - startedAt }, "messages listed");
   }
 
-  async getMessages(request?: ListMessagesRequest) {
+  /** One whole message, processed and ready to read. */
+  public async getMessage(message_id: string): Promise<MessageDetail> {
     const startedAt = Date.now();
 
-    log.debug({ labels: request?.labels ?? "(all)" }, "loading messages");
+    log.debug({ message_id }, "loading message");
 
-    const messages = await this.inbox.get(request);
-    const cleanedMessages: any[] = [];
+    const message = await this.inbox.getMessage(message_id);
 
-    for (const message of messages) {
-      if (!message.html) {
-        log.warn(
-          { message_id: message.messageId },
-          "message has no html content",
-        );
-      }
-
-      const processedContent = processNewsletter(message.html);
-      const fullMessage = {
-        id: message.messageId,
-        from: message.from,
-        subject: message.subject,
-        recievedAt: message.timestamp,
-        labels: message.labels,
-        text: message.text,
-        body: processedContent,
-      };
-      cleanedMessages.push(fullMessage);
+    if (!message.html) {
+      log.warn({ message_id }, "message has no html content");
     }
 
+    const detail: MessageDetail = {
+      id: message.messageId,
+      from: message.from ?? "",
+      subject: message.subject ?? "",
+      receivedAt: message.timestamp,
+      labels: message.labels ?? [],
+      text: message.text ?? "",
+      body: processNewsletter(message.html ?? ""),
+    };
+
     log.info(
-      {
-        fetched: messages.length,
-        processed: cleanedMessages.length,
-        durationMs: Date.now() - startedAt,
-      },
-      "messages ready",
+      { message_id, durationMs: Date.now() - startedAt },
+      "message loaded",
     );
 
-    return cleanedMessages;
+    return detail;
   }
 
   async *summarize(message: MaskedContent) {

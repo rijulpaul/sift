@@ -1,11 +1,12 @@
 /**
  * The TUI's view model: one mail as the screen needs it.
  *
- * It is built from the core's messages by `toMailSummary` (lib/mail.ts), which
- * is the only place that knows the core's message shape.
+ * A list row is metadata only — the body is fetched when a mail is opened, so
+ * opening is a single request rather than fetching every message up front.
  */
 import type { MaskedContent } from "../core/process";
 
+/** One row of the message list. */
 export interface MailSummary {
   id: string;
   from: string;
@@ -14,6 +15,10 @@ export interface MailSummary {
   labels: string[];
   /** True when the message carries the `unread` label. */
   unread: boolean;
+}
+
+/** A message's body, fetched when the message is opened. */
+export interface MailBody {
   /** Plain text of the message as received. */
   text: string;
   /** Processed body (markdown with masked links). Input to `core.summarize()`. */

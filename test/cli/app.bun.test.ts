@@ -550,6 +550,74 @@ describe("TUI — mouse filter and layout (split)", () => {
   });
 });
 
+describe("TUI — bodies are fetched only when a message is opened", () => {
+  it("builds the list without fetching a single body", async () => {
+    const { t, calls } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    expect(calls.fetched).toEqual([]);
+  });
+
+  it("fetches exactly the message that is opened", async () => {
+    const { t, calls } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressKey("j");
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes(SUBJECT_2));
+
+    expect(calls.fetched).toEqual(["2"]);
+  });
+
+  it("does not fetch a body it already has", async () => {
+    const { t, calls } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes(SUBJECT_1));
+
+    t.mockInput.pressKey("j");
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes(SUBJECT_2));
+
+    // Back to the first message: its body is already here.
+    t.mockInput.pressKey("k");
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes(SUBJECT_1));
+
+    expect(calls.fetched).toEqual(["1", "2"]);
+  });
+
+  it("fetches the body again after a reload", async () => {
+    const { t, calls } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes(SUBJECT_1));
+    expect(calls.fetched).toEqual(["1"]);
+
+    // A reload drops the cached body, so the server's copy is what is shown.
+    t.mockInput.pressKey("r");
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes(SUBJECT_1));
+    expect(calls.fetched).toEqual(["1", "1"]);
+  });
+
+  it("reports a body that could not be fetched", async () => {
+    const { t } = await startAll({ failGet: "network down" });
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressEnter();
+
+    const screen = await until(t, (f) =>
+      f.includes("Couldn't load this message."),
+    );
+    expect(screen).toContain("network down");
+  });
+});
+
 describe("TUI — account", () => {
   it("shows the username and address in the footer", async () => {
     const { t } = await startAll({

@@ -1,4 +1,4 @@
-import { AgentMailClient } from "agentmail";
+import { AgentMailClient, type AgentMail } from "agentmail";
 import type { ListMessagesRequest } from "agentmail/inboxes";
 
 import { logger } from "./logger";
@@ -142,90 +142,61 @@ export class Inbox {
     return new Inbox({ inboxId, email, displayName });
   };
 
-  public async *getStream(request: ListMessagesRequest = {}) {
-    log.debug(
-      { inbox_id: this.inbox_id, request: request ?? "(default)" },
-      "fetching messages",
-    );
+  /**
+   * The inbox list: message summaries, page by page, without bodies.
+   * This is what builds a message list; fetch a body with `getMessage` when one
+   * is actually opened.
+   */
+  public async *listMessages(
+    request: ListMessagesRequest = {},
+  ): AsyncGenerator<AgentMail.MessageItem, void, void> {
+    log.debug({ inbox_id: this.inbox_id, request }, "listing messages");
 
+    let pageToken = request.pageToken;
     let pages = 0;
-    let total_messages = 0;
+    let count = 0;
 
-    // Iterate over the list of messages and fetch the content.
-    // Not using batchGet because it doesnt provide inner content
     do {
-      const res = await handleApiCall(
+      const page = await handleApiCall(
         "list messages",
         { inbox_id: this.inbox_id, page: pages + 1 },
-        () => Inbox.client.inboxes.messages.list(this.inbox_id, request),
+        () =>
+          Inbox.client.inboxes.messages.list(this.inbox_id, {
+            ...request,
+            pageToken,
+          }),
       );
-      log.debug(
-        { page: ++pages, count: res.messages.length },
-        "fetched message page",
-      );
-      total_messages += res.messages.length;
-      for (const message of res.messages) {
-        // Same handling as get(): a failed fetch is logged with the message id
-        // and rethrown wrapped, instead of surfacing raw to the consumer.
-        yield handleApiCall(
-          "get message",
-          { inbox_id: this.inbox_id, message_id: message.messageId },
-          () =>
-            Inbox.client.inboxes.messages.get(this.inbox_id, message.messageId),
-        );
-      }
-      request.pageToken = res?.nextPageToken || undefined;
-    } while (request.pageToken);
 
-    log.info(
-      { inbox_id: this.inbox_id, count: total_messages, pages },
-      "fetched messages",
-    );
+      pages++;
+      count += page.messages.length;
+      log.debug(
+        { page: pages, count: page.messages.length },
+        "listed message page",
+      );
+
+      for (const message of page.messages) yield message;
+
+      pageToken = page.nextPageToken || undefined;
+    } while (pageToken);
+
+    log.info({ inbox_id: this.inbox_id, count, pages }, "listed messages");
   }
 
-  public get = async (request: ListMessagesRequest = {}) => {
-    log.debug(
-      { inbox_id: this.inbox_id, request: request ?? "(default)" },
-      "fetching messages",
+  /** One whole message, for reading it. */
+  public getMessage = async (
+    message_id: string,
+  ): Promise<AgentMail.Message> => {
+    log.debug({ inbox_id: this.inbox_id, message_id }, "getting message");
+
+    const message = await handleApiCall(
+      "get message",
+      { inbox_id: this.inbox_id, message_id },
+      () => Inbox.client.inboxes.messages.get(this.inbox_id, message_id),
     );
 
-    const messages: any[] = [];
-    let pages = 0;
+    log.debug({ inbox_id: this.inbox_id, message_id }, "got message");
 
-    // Iterate over the list of messages and fetch the content.
-    // Not using batchGet because it doesnt provide inner content
-    do {
-      const res = await handleApiCall(
-        "list messages",
-        { inbox_id: this.inbox_id, page: pages + 1 },
-        () => Inbox.client.inboxes.messages.list(this.inbox_id, request),
-      );
-      log.debug(
-        { page: ++pages, count: res.messages.length },
-        "fetched message page",
-      );
-      for (const message of res.messages) {
-        messages.push(
-          await handleApiCall(
-            "get message",
-            { inbox_id: this.inbox_id, message_id: message.messageId },
-            () =>
-              Inbox.client.inboxes.messages.get(
-                this.inbox_id,
-                message.messageId,
-              ),
-          ),
-        );
-      }
-      request.pageToken = res?.nextPageToken || undefined;
-    } while (request.pageToken);
-
-    log.info(
-      { inbox_id: this.inbox_id, count: messages.length, pages },
-      "fetched messages",
-    );
-
-    return messages;
+    return message;
   };
 
   public updateLabels = async (

@@ -72,20 +72,25 @@ The read button flips the mail's state, so it works both ways.
 - **Summaries** are kept per message for the session, so a finished summary is
   never requested again. A summary in progress is not cancelled by moving to
   another mail.
+- **Bodies** are fetched when a message is opened and remembered until the next
+  reload: pressing `r` drops them, so `r` shows what the server has now rather
+  than a cached copy.
 
 ## How it talks to the core
 
-Only `cli/lib/mail.ts` knows the core's message shape. It maps a streamed message
-onto the TUI's view model (`MailSummary`). Everything else uses that view model.
+Only `cli/lib/mail.ts` knows the core's message shape. It maps a list row onto
+the TUI's view model (`MailSummary`, metadata only) and a fetched message onto
+`MailBody`. Everything else uses those.
 
-| Core                                              | Used for                                                           |
-| ------------------------------------------------- | ------------------------------------------------------------------ |
-| `getMessagesStream(request)`                      | the list (streamed), `r`, the unread filter (`labels: ["unread"]`) |
-| `summarize(content)`                              | summaries (streamed)                                               |
-| `setMessageLabel(id, { removeLabels: "unread" })` | mark as read                                                       |
-| `setMessageLabel(id, { addLabels: "unread" })`    | mark as unread                                                     |
-| `deleteMessage(id)`                               | delete (after confirmation)                                        |
-| `config.markAsRead` / `config.summarize`          | open behaviour                                                     |
+| Core                                              | Used for                                                                           |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `listMessages(request)`                           | the list (streamed rows, no bodies), `r`, the unread filter (`labels: ["unread"]`) |
+| `getMessage(id)`                                  | the body of the message being read (fetched on open, then cached)                  |
+| `summarize(content)`                              | summaries (streamed)                                                               |
+| `setMessageLabel(id, { removeLabels: "unread" })` | mark as read                                                                       |
+| `setMessageLabel(id, { addLabels: "unread" })`    | mark as unread                                                                     |
+| `deleteMessage(id)`                               | delete (after confirmation)                                                        |
+| `config.markAsRead` / `config.summarize`          | open behaviour                                                                     |
 
 ## Layout of this directory
 

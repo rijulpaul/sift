@@ -17,8 +17,6 @@ const mail = (id: string, extra: Partial<MailSummary> = {}): MailSummary => ({
   receivedAt: new Date(2024, 0, 1),
   labels: [],
   unread: false,
-  text: `text ${id}`,
-  content: { content: `text ${id}`, links: {} },
   ...extra,
 });
 
@@ -102,6 +100,24 @@ describe("loading", () => {
     const reloaded = run(summarised, { type: "loadStart", filter: "all" });
 
     expect(reloaded.summaries.a).toEqual({ status: "done", text: "hi" });
+  });
+
+  it("a reload drops cached bodies, so the server's copy is fetched again", () => {
+    let state = run(
+      loaded(),
+      {
+        type: "bodyLoaded",
+        id: "a",
+        body: { text: "old", content: { content: "old", links: {} } },
+      },
+      { type: "summaryStart", id: "a" },
+    );
+    expect(state.bodies.a).toBeDefined();
+
+    state = run(state, { type: "loadStart", filter: "all" });
+
+    expect(state.bodies).toEqual({});
+    expect(state.summaries.a).toBeDefined(); // summaries still belong to the id
   });
 
   it("records the filter the load was started with", () => {

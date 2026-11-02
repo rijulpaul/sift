@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BODY_PENDING_MESSAGE,
   NO_CONTENT_MESSAGE,
   SUMMARY_PENDING_MESSAGE,
   bodyView,
@@ -8,24 +9,22 @@ import {
   readActionLabel,
   summaryActionLabel,
 } from "../../cli/lib/preview";
-import type { SummaryState } from "../../cli/state";
-import type { MailSummary } from "../../cli/types";
+import type { BodyState, SummaryState } from "../../cli/state";
+import type { MailBody } from "../../cli/types";
 
-const mail = (extra: Partial<MailSummary> = {}): MailSummary => ({
-  id: "m1",
-  from: "ada@x.io",
-  subject: "Hello",
-  receivedAt: new Date(2024, 0, 1),
-  labels: [],
-  unread: false,
-  text: "The message text",
-  content: { content: "The markdown", links: {} },
-  ...extra,
+/** A body that has been fetched. */
+const readyBody = (extra: Partial<MailBody> = {}): BodyState => ({
+  status: "ready",
+  body: {
+    text: "The message text",
+    content: { content: "The markdown", links: {} },
+    ...extra,
+  },
 });
 
 describe("bodyView — text view", () => {
   it("shows the message text", () => {
-    expect(bodyView(mail(), false, undefined)).toEqual({
+    expect(bodyView(readyBody(), false, undefined)).toEqual({
       text: "The message text",
       dim: false,
     });
@@ -34,7 +33,7 @@ describe("bodyView — text view", () => {
   it("shows a placeholder when the message has no content", () => {
     expect(
       bodyView(
-        mail({ text: "", content: { content: "", links: {} } }),
+        readyBody({ text: "", content: { content: "", links: {} } }),
         false,
         undefined,
       ),
@@ -43,38 +42,71 @@ describe("bodyView — text view", () => {
 
   it("ignores any summary while the text view is showing", () => {
     const done: SummaryState = { status: "done", text: "A summary" };
-    expect(bodyView(mail(), false, done).text).toBe("The message text");
+    expect(bodyView(readyBody(), false, done).text).toBe("The message text");
+  });
+});
+
+describe("bodyView — before the body arrives", () => {
+  it("says it is loading while the message is fetched", () => {
+    expect(bodyView({ status: "loading" }, false, undefined)).toEqual({
+      text: BODY_PENDING_MESSAGE,
+      dim: true,
+    });
+  });
+
+  it("says it is loading when nothing has been fetched yet", () => {
+    expect(bodyView(undefined, false, undefined).text).toBe(
+      BODY_PENDING_MESSAGE,
+    );
+  });
+
+  it("reports a failed fetch and how to retry", () => {
+    const failed = bodyView(
+      { status: "error", message: "network down" },
+      false,
+      undefined,
+    );
+
+    expect(failed.dim).toBe(true);
+    expect(failed.text).toContain("Couldn't load this message.");
+    expect(failed.text).toContain("network down");
+    expect(failed.text).toContain("Press enter to try again.");
   });
 });
 
 describe("bodyView — summary view", () => {
   it("shows a pending placeholder before the first chunk arrives", () => {
-    expect(bodyView(mail(), true, { status: "streaming", text: "" })).toEqual({
+    expect(
+      bodyView(readyBody(), true, { status: "streaming", text: "" }),
+    ).toEqual({
       text: SUMMARY_PENDING_MESSAGE,
       dim: true,
     });
   });
 
   it("shows the pending placeholder when no summary exists yet", () => {
-    expect(bodyView(mail(), true, undefined).text).toBe(
+    expect(bodyView(readyBody(), true, undefined).text).toBe(
       SUMMARY_PENDING_MESSAGE,
     );
   });
 
   it("shows the streamed text as it grows", () => {
     expect(
-      bodyView(mail(), true, { status: "streaming", text: "Summary so far" }),
+      bodyView(readyBody(), true, {
+        status: "streaming",
+        text: "Summary so far",
+      }),
     ).toEqual({ text: "Summary so far", dim: false });
   });
 
   it("shows a finished summary", () => {
     expect(
-      bodyView(mail(), true, { status: "done", text: "Done summary" }),
+      bodyView(readyBody(), true, { status: "done", text: "Done summary" }),
     ).toEqual({ text: "Done summary", dim: false });
   });
 
   it("explains a failure and how to retry when nothing was produced", () => {
-    const failed = bodyView(mail(), true, {
+    const failed = bodyView(readyBody(), true, {
       status: "error",
       text: "",
       error: "model unavailable",
@@ -86,7 +118,7 @@ describe("bodyView — summary view", () => {
   });
 
   it("keeps a partial summary and says it was interrupted", () => {
-    const failed = bodyView(mail(), true, {
+    const failed = bodyView(readyBody(), true, {
       status: "error",
       text: "Partial",
       error: "stream broke",

@@ -1,10 +1,10 @@
 import type { SiftCore } from "../../core";
 import { resolveLinks } from "../../core/links";
-import type { MailSummary } from "../types";
+import type { MailBody, MailSummary } from "../types";
 
-/** One message as yielded by `SiftCore.getMessagesStream`. */
-export type CoreMessage =
-  ReturnType<SiftCore["getMessagesStream"]> extends AsyncGenerator<
+/** One row as `SiftCore.listMessages` yields it. */
+export type CoreListItem =
+  ReturnType<SiftCore["listMessages"]> extends AsyncGenerator<
     infer T,
     unknown,
     unknown
@@ -12,25 +12,31 @@ export type CoreMessage =
     ? T
     : never;
 
+/** A whole message, as `SiftCore.getMessage` returns it. */
+export type CoreMessageDetail = Awaited<ReturnType<SiftCore["getMessage"]>>;
+
 /** The label AgentMail uses for unread mail. Marking as read removes it. */
 export const UNREAD_LABEL = "unread";
 
 export const isUnread = (labels: readonly string[]): boolean =>
   labels.includes(UNREAD_LABEL);
 
-/** Map a core message onto the TUI's view model. */
-export function toMailSummary(message: CoreMessage): MailSummary {
-  const labels = message.labels ?? [];
+/** Map a list row onto the TUI's view model. */
+export function toMailSummary(item: CoreListItem): MailSummary {
+  const labels = item.labels ?? [];
   return {
-    id: message.id,
-    from: message.from ?? "",
-    subject: message.subject ?? "",
-    receivedAt: new Date(message.recievedAt),
+    id: item.id,
+    from: item.from ?? "",
+    subject: item.subject ?? "",
+    receivedAt: new Date(item.receivedAt),
     labels,
     unread: isUnread(labels),
-    text: message.text ?? "",
-    content: message.body,
   };
+}
+
+/** Map a fetched message onto the body the preview shows. */
+export function toMailBody(detail: CoreMessageDetail): MailBody {
+  return { text: detail.text ?? "", content: detail.body };
 }
 
 /**
@@ -38,13 +44,13 @@ export function toMailSummary(message: CoreMessage): MailSummary {
  * otherwise turns the processed markdown back into text, resolving the masked
  * link placeholders (`[text](LINK_3)`) to the real URLs.
  */
-export function plainTextOf(mail: MailSummary): string {
-  const text = mail.text.trim();
+export function plainTextOf(body: MailBody): string {
+  const text = body.text.trim();
   if (text !== "") return text;
 
   // The processed body carries placeholders, not addresses; resolve them so the
   // preview shows the real links.
-  return resolveLinks(mail.content.content, mail.content.links)
+  return resolveLinks(body.content.content, body.content.links)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

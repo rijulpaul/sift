@@ -25,15 +25,18 @@ export interface MockCoreOptions {
   delayMs?: number;
   summaryChunks?: string[];
   failList?: string;
+  failGet?: string;
   failSummary?: string;
   failLabel?: string;
   failDelete?: string;
 }
 
 export interface MockCalls {
-  /** Each `getMessagesStream` request, in order. */
+  /** Each `listMessages` request, in order. */
   lists: Array<{ labels?: string[] }>;
-  /** Each `summarize` call, by message content. */
+  /** Each `getMessage` call, by message id. */
+  fetched: string[];
+  /** Number of `summarize` calls. */
   summaries: number;
   labels: Array<{ id: string; addLabels: unknown; removeLabels: unknown }>;
   deleted: string[];
@@ -145,6 +148,7 @@ export function createMockCore(options: MockCoreOptions = {}): {
   }));
   const calls: MockCalls = {
     lists: [],
+    fetched: [],
     summaries: 0,
     labels: [],
     deleted: [],
@@ -164,7 +168,7 @@ export function createMockCore(options: MockCoreOptions = {}): {
       displayName: options.inbox?.displayName,
     },
 
-    async *getMessagesStream(request?: { labels?: string[] }) {
+    async *listMessages(request?: { labels?: string[] }) {
       calls.lists.push({ ...request });
       if (options.failList) throw new Error(options.failList);
 
@@ -172,16 +176,34 @@ export function createMockCore(options: MockCoreOptions = {}): {
       for (const message of messages) {
         await delay();
         if (wanted.some((label) => !message.labels.includes(label))) continue;
+        // Rows carry no body, exactly like the core's.
         yield {
           id: message.id,
           from: message.from,
           subject: message.subject,
-          recievedAt: message.receivedAt,
+          receivedAt: message.receivedAt,
           labels: [...message.labels],
-          text: message.text,
-          body: toContent(message.text),
         };
       }
+    },
+
+    async getMessage(id: string) {
+      calls.fetched.push(id);
+      await delay();
+      if (options.failGet) throw new Error(options.failGet);
+
+      const message = messages.find((m) => m.id === id);
+      if (message === undefined) throw new Error(`No message ${id}`);
+
+      return {
+        id: message.id,
+        from: message.from,
+        subject: message.subject,
+        receivedAt: message.receivedAt,
+        labels: [...message.labels],
+        text: message.text,
+        body: toContent(message.text),
+      };
     },
 
     async *summarize(_content: MaskedContent) {

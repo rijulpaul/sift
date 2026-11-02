@@ -13,7 +13,7 @@ import {
   readActionLabel,
   summaryActionLabel,
 } from "../lib/preview";
-import type { SummaryState } from "../state";
+import type { BodyState, SummaryState } from "../state";
 import { attr, theme } from "../theme";
 import type { MailSummary } from "../types";
 import { Button, ACTION_STYLE } from "./Button";
@@ -24,6 +24,8 @@ export type PreviewView =
   | {
       kind: "mail";
       mail: MailSummary;
+      /** Undefined until the message has been fetched. */
+      body: BodyState | undefined;
       showSummary: boolean;
       summary: SummaryState | undefined;
       confirming: boolean;
@@ -242,7 +244,7 @@ export class MailPreview {
       return;
     }
 
-    const { mail, showSummary, summary, confirming } = view;
+    const { mail, body, showSummary, summary, confirming } = view;
     this.placeholder.hide();
     this.scroll.visible = true;
 
@@ -261,7 +263,7 @@ export class MailPreview {
     this.summaryButton.setLabel(summaryActionLabel(showSummary));
     this.readButton.setLabel(readActionLabel(mail.unread));
 
-    const { text, dim } = bodyView(mail, showSummary, summary);
+    const { text, dim } = bodyView(body, showSummary, summary);
     this.body.content = text;
     this.body.fg = dim ? theme.muted : theme.text;
 

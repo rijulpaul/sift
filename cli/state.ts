@@ -1,5 +1,5 @@
 import type { LayoutMode } from "./layout";
-import type { MailSummary } from "./types";
+import type { MailBody, MailSummary } from "./types";
 
 export type Focus = "list" | "preview";
 export type Filter = "all" | "unread";
@@ -12,6 +12,12 @@ export interface SummaryState {
   text: string;
   error?: string;
 }
+
+/** A message's body, which is fetched when the message is opened. */
+export type BodyState =
+  | { status: "loading" }
+  | { status: "ready"; body: MailBody }
+  | { status: "error"; message: string };
 
 export interface State {
   /** Mail received so far, in arrival order. Grows while a load streams in. */
@@ -26,6 +32,8 @@ export interface State {
   status: ListStatus;
   /** The open mail shows its summary (true) or its text (false). */
   showSummary: boolean;
+  /** Body by mail id, fetched on open and kept for the session. */
+  bodies: Record<string, BodyState>;
   /** Summaries by mail id. Kept across reloads so a summary is never redone. */
   summaries: Record<string, SummaryState>;
   /** Delete was requested for the open mail and awaits confirmation. */
@@ -43,6 +51,9 @@ export type Action =
   | { type: "cursorTo"; index: number }
   /** Open the mail at `index`. Re-opening the open mail keeps its view. */
   | { type: "open"; index: number; showSummary: boolean }
+  | { type: "bodyStart"; id: string }
+  | { type: "bodyLoaded"; id: string; body: MailBody }
+  | { type: "bodyFailed"; id: string; message: string }
   | { type: "setUnread"; id: string; unread: boolean }
   | { type: "setShowSummary"; showSummary: boolean }
   | { type: "summaryStart"; id: string }
@@ -66,6 +77,7 @@ export const initialState = (layout: LayoutMode): State => ({
   filter: "unread",
   status: { kind: "loading" },
   showSummary: false,
+  bodies: {},
   summaries: {},
   confirmingDelete: false,
   notice: null,
@@ -80,10 +92,12 @@ export function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "loadStart":
       // A load replaces the list, so the preview closes with it. Summaries are
-      // kept: they belong to the message id, not to the load.
+      // kept: they belong to the message id, not to the load. Bodies are
+      // dropped, so a message edited elsewhere is fetched fresh when opened.
       return {
         ...state,
         mails: [],
+        bodies: {},
         cursor: 0,
         openId: null,
         focus: "list",
@@ -142,6 +156,30 @@ export function reducer(state: State, action: Action): State {
         notice: null,
       };
     }
+
+    case "bodyStart":
+      return {
+        ...state,
+        bodies: { ...state.bodies, [action.id]: { status: "loading" } },
+      };
+
+    case "bodyLoaded":
+      return {
+        ...state,
+        bodies: {
+          ...state.bodies,
+          [action.id]: { status: "ready", body: action.body },
+        },
+      };
+
+    case "bodyFailed":
+      return {
+        ...state,
+        bodies: {
+          ...state.bodies,
+          [action.id]: { status: "error", message: action.message },
+        },
+      };
 
     case "setUnread":
       return {
@@ -212,11 +250,14 @@ export function reducer(state: State, action: Action): State {
       const mails = state.mails.filter((m) => m.id !== action.id);
       const summaries = { ...state.summaries };
       delete summaries[action.id];
+      const bodies = { ...state.bodies };
+      delete bodies[action.id];
       const wasOpen = state.openId === action.id;
       return {
         ...state,
         mails,
         summaries,
+        bodies,
         cursor: clamp(
           index < state.cursor ? state.cursor - 1 : state.cursor,
           0,

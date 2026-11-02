@@ -3,31 +3,40 @@ import { describe, expect, it } from "vitest";
 import {
   isUnread,
   plainTextOf,
+  toMailBody,
   toMailSummary,
-  type CoreMessage,
+  type CoreListItem,
+  type CoreMessageDetail,
 } from "../../cli/lib/mail";
-import type { MailSummary } from "../../cli/types";
+import type { MailBody } from "../../cli/types";
 
-/** A message in the shape SiftCore.getMessagesStream yields. */
-const coreMessage = (extra: Partial<CoreMessage> = {}): CoreMessage =>
+/** A row in the shape SiftCore.listMessages yields. */
+const coreRow = (extra: Partial<CoreListItem> = {}): CoreListItem =>
   ({
     id: "m1",
     from: "Ada <ada@x.io>",
     subject: "Hello",
-    recievedAt: new Date(2024, 2, 4, 9, 30),
+    receivedAt: new Date(2024, 2, 4, 9, 30),
     labels: ["inbox", "unread"],
+    ...extra,
+  }) as CoreListItem;
+
+/** A message in the shape SiftCore.getMessage returns. */
+const coreDetail = (
+  extra: Partial<CoreMessageDetail> = {},
+): CoreMessageDetail =>
+  ({
+    id: "m1",
+    from: "Ada <ada@x.io>",
+    subject: "Hello",
+    receivedAt: new Date(2024, 2, 4, 9, 30),
+    labels: ["inbox"],
     text: "Plain body",
     body: { content: "Markdown body", links: {} },
     ...extra,
-  }) as CoreMessage;
+  }) as CoreMessageDetail;
 
-const summary = (extra: Partial<MailSummary> = {}): MailSummary => ({
-  id: "m1",
-  from: "ada@x.io",
-  subject: "",
-  receivedAt: new Date(2024, 0, 1),
-  labels: [],
-  unread: false,
+const body = (extra: Partial<MailBody> = {}): MailBody => ({
   text: "",
   content: { content: "", links: {} },
   ...extra,
@@ -42,8 +51,8 @@ describe("isUnread", () => {
 });
 
 describe("toMailSummary", () => {
-  it("maps the core's message onto the view model", () => {
-    const mail = toMailSummary(coreMessage());
+  it("maps a list row onto the view model", () => {
+    const mail = toMailSummary(coreRow());
 
     expect(mail.id).toBe("m1");
     expect(mail.from).toBe("Ada <ada@x.io>");
@@ -51,39 +60,56 @@ describe("toMailSummary", () => {
     expect(mail.receivedAt).toEqual(new Date(2024, 2, 4, 9, 30));
     expect(mail.labels).toEqual(["inbox", "unread"]);
     expect(mail.unread).toBe(true);
-    expect(mail.text).toBe("Plain body");
-    expect(mail.content).toEqual({ content: "Markdown body", links: {} });
+  });
+
+  it("carries no body: that arrives with getMessage", () => {
+    const mail = toMailSummary(coreRow()) as unknown as Record<string, unknown>;
+
+    expect(mail.text).toBeUndefined();
+    expect(mail.content).toBeUndefined();
   });
 
   it("turns a timestamp that arrived as a string into a Date", () => {
     const mail = toMailSummary(
-      coreMessage({ recievedAt: "2024-03-04T09:30:00Z" as unknown as Date }),
+      coreRow({ receivedAt: "2024-03-04T09:30:00Z" as unknown as Date }),
     );
+
     expect(mail.receivedAt).toBeInstanceOf(Date);
     expect(mail.receivedAt.toISOString()).toBe("2024-03-04T09:30:00.000Z");
   });
 
-  it("fills in missing subject and text with empty strings", () => {
-    const mail = toMailSummary(
-      coreMessage({ subject: undefined, text: undefined }),
-    );
+  it("fills in a missing subject with an empty string", () => {
+    const mail = toMailSummary(coreRow({ subject: undefined }));
+
     expect(mail.subject).toBe("");
-    expect(mail.text).toBe("");
+  });
+});
+
+describe("toMailBody", () => {
+  it("maps a fetched message onto the body the preview shows", () => {
+    expect(toMailBody(coreDetail())).toEqual({
+      text: "Plain body",
+      content: { content: "Markdown body", links: {} },
+    });
+  });
+
+  it("tolerates a message with no plain text", () => {
+    expect(toMailBody(coreDetail({ text: undefined })).text).toBe("");
+    expect(toMailBody(coreDetail({ text: undefined })).content).toEqual({
+      content: "Markdown body",
+      links: {},
+    });
   });
 });
 
 describe("plainTextOf", () => {
   it("prefers the plain text when there is some", () => {
-    expect(
-      plainTextOf(
-        summary({ text: "  Plain  ", content: { content: "md", links: {} } }),
-      ),
-    ).toBe("Plain");
+    expect(plainTextOf(body({ text: "  Plain  " }))).toBe("Plain");
   });
 
   it("falls back to the processed markdown, with the real links", () => {
     const text = plainTextOf(
-      summary({
+      body({
         content: {
           content:
             "Read [the post](LINK_1) now.\n\n\n\n![Chart of growth](LINK_0)",
@@ -98,6 +124,7 @@ describe("plainTextOf", () => {
         },
       }),
     );
+
     expect(text).toBe(
       "Read the post (https://example.com/post) now.\n\n" +
         "[image: Chart of growth] (https://cdn.example.com/growth.png)",
@@ -107,7 +134,7 @@ describe("plainTextOf", () => {
   it("names images that have no alt text", () => {
     expect(
       plainTextOf(
-        summary({
+        body({
           content: {
             content: "![](LINK_0)",
             links: {
@@ -122,12 +149,14 @@ describe("plainTextOf", () => {
   it("leaves a placeholder it cannot resolve", () => {
     expect(
       plainTextOf(
-        summary({ content: { content: "See [it](LINK_9)", links: {} } }),
+        body({
+          content: { content: "See [it](LINK_9)", links: {} },
+        }),
       ),
     ).toBe("See [it](LINK_9)");
   });
 
   it("is empty when there is no text and no content", () => {
-    expect(plainTextOf(summary())).toBe("");
+    expect(plainTextOf(body())).toBe("");
   });
 });

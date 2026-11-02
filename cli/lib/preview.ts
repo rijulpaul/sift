@@ -2,11 +2,11 @@
  * What the preview pane shows, as pure functions of the mail and its summary.
  * No renderer imports, so these are unit-tested without a terminal.
  */
-import type { SummaryState } from "../state";
-import type { MailSummary } from "../types";
+import type { BodyState, SummaryState } from "../state";
 import { plainTextOf } from "./mail";
 
 export const PREVIEW_EMPTY_MESSAGE = "Select a message to read it.";
+export const BODY_PENDING_MESSAGE = "Loading…";
 export const SUMMARY_PENDING_MESSAGE = "Summarizing…";
 export const NO_CONTENT_MESSAGE = "(no content)";
 
@@ -16,17 +16,37 @@ export interface BodyView {
   dim: boolean;
 }
 
+/** A failure the reader can act on: what failed, why, and how to retry. */
+const failureText = (what: string, reason: string, retry: string): string =>
+  `Couldn't ${what}.\n${reason}\n\n${retry}`;
+
 /**
  * The body text. With `showSummary` it is the summary (live while it streams);
- * otherwise it is the message text.
+ * otherwise it is the message text. `body` is undefined until the message has
+ * been fetched, which happens when it is opened.
  */
 export function bodyView(
-  mail: MailSummary,
+  body: BodyState | undefined,
   showSummary: boolean,
   summary: SummaryState | undefined,
 ): BodyView {
+  if (body === undefined || body.status === "loading") {
+    return { text: BODY_PENDING_MESSAGE, dim: true };
+  }
+
+  if (body.status === "error") {
+    return {
+      text: failureText(
+        "load this message",
+        body.message,
+        "Press enter to try again.",
+      ),
+      dim: true,
+    };
+  }
+
   if (!showSummary) {
-    const text = plainTextOf(mail);
+    const text = plainTextOf(body.body);
     return text === ""
       ? { text: NO_CONTENT_MESSAGE, dim: true }
       : { text, dim: false };
@@ -43,7 +63,11 @@ export function bodyView(
     // Keep any partial summary, and say why it stopped.
     if (summary.text === "") {
       return {
-        text: `Couldn't summarize this message.\n${summary.error ?? "Unknown error."}\n\nPress s to try again.`,
+        text: failureText(
+          "summarize this message",
+          summary.error ?? "Unknown error.",
+          "Press s to try again.",
+        ),
         dim: true,
       };
     }

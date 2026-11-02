@@ -215,16 +215,17 @@ as you edit.
 
 ```
 AgentMail inbox
-      │  list messages, fetch each one
+      │  list rows; fetch one body when a message is opened
       ▼
 core/mail.ts ──► core/process.ts ──► core/agent ──► core/index.ts ──► cli/  web/
   AgentMail         HTML → Markdown      LangChain      SiftCore       terminal  browser
   SDK wrapper       links masked         agent          the API        OpenTUI   React
 ```
 
-1. **Fetch.** `SiftCore.getMessagesStream()` walks the inbox a page at a time and
-   yields each message as it arrives, which is what lets the list fill in
-   progressively.
+1. **Fetch.** `SiftCore.listMessages()` walks the inbox a page at a time and
+   yields each row as it arrives, which is what lets the list fill in
+   progressively. Rows carry no body, so the list never pays for content it may
+   not open; `SiftCore.getMessage(id)` fetches one message when it is read.
 2. **Process.** `processNewsletter()` removes tracking pixels, scripts and
    presentational markup, converts the result to Markdown, and replaces every
    link and image URL with a `LINK_<n>` placeholder. The real URLs stay in a
@@ -242,8 +243,10 @@ Two deliberate choices keep startup and the first summary fast:
   SDKs costs roughly 600ms, so it happens on first use rather than at startup
   (`SiftCore.warmup()` can preload it in the background). Only the configured
   provider is ever imported.
-- **Nothing is fetched twice.** A summary is kept per message for the session, so
-  a finished summary is never requested again.
+- **Nothing is fetched twice.** A list row carries no body, so reading a message
+  costs one request for that message and nothing more. Its body is remembered
+  until the next reload, and a summary is kept per message for the session, so
+  neither is requested again.
 
 ## Project layout
 
