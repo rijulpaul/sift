@@ -2,6 +2,7 @@ import type { ListMessagesRequest } from "agentmail/inboxes";
 import type { Config } from "../config/config";
 import { NewsletterSummarizationAgent } from "./agent";
 import { logger } from "./logger";
+import { createLinkResolver } from "./links";
 import { Inbox, type Label } from "./mail";
 import { processNewsletter, type MaskedContent } from "./process";
 
@@ -163,12 +164,28 @@ export class SiftCore {
     // No try/catch here: BaseAgent.invoke already logs the failure with the
     // agent name, and a catch would also catch errors thrown by the caller
     // while consuming this generator, mislabelling them as agent failures.
-    for await (const chunk of agent.invoke(message)) {
-      chunks++;
+    // The agent only ever saw placeholders; put the real URLs back for the
+    // reader. A placeholder can be split across two chunks, so the resolver
+    // carries the partial token between them and nothing else.
+    const links = createLinkResolver(message.links);
 
+    for await (const chunk of agent.invoke(message)) {
+      const text = links.push(chunk);
+      if (text === "") continue;
+
+      chunks++;
       yield {
         done: false,
-        chunk,
+        chunk: text,
+      };
+    }
+
+    const tail = links.flush();
+    if (tail !== "") {
+      chunks++;
+      yield {
+        done: false,
+        chunk: tail,
       };
     }
 

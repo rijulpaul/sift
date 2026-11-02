@@ -81,23 +81,50 @@ describe("plainTextOf", () => {
     ).toBe("Plain");
   });
 
-  it("falls back to the processed markdown, without the link placeholders", () => {
+  it("falls back to the processed markdown, with the real links", () => {
     const text = plainTextOf(
       summary({
         content: {
           content:
             "Read [the post](LINK_1) now.\n\n\n\n![Chart of growth](LINK_0)",
-          links: {},
+          links: {
+            0: {
+              id: 0,
+              url: "https://cdn.example.com/growth.png",
+              isImage: true,
+            },
+            1: { id: 1, url: "https://example.com/post", isImage: false },
+          },
         },
       }),
     );
-    expect(text).toBe("Read the post now.\n\n[image: Chart of growth]");
+    expect(text).toBe(
+      "Read the post (https://example.com/post) now.\n\n" +
+        "[image: Chart of growth] (https://cdn.example.com/growth.png)",
+    );
   });
 
   it("names images that have no alt text", () => {
     expect(
-      plainTextOf(summary({ content: { content: "![](LINK_0)", links: {} } })),
-    ).toBe("[image]");
+      plainTextOf(
+        summary({
+          content: {
+            content: "![](LINK_0)",
+            links: {
+              0: { id: 0, url: "https://cdn.example.com/x.png", isImage: true },
+            },
+          },
+        }),
+      ),
+    ).toBe("[image] (https://cdn.example.com/x.png)");
+  });
+
+  it("leaves a placeholder it cannot resolve", () => {
+    expect(
+      plainTextOf(
+        summary({ content: { content: "See [it](LINK_9)", links: {} } }),
+      ),
+    ).toBe("See [it](LINK_9)");
   });
 
   it("is empty when there is no text and no content", () => {

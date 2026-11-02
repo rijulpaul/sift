@@ -1,4 +1,5 @@
 import type { SiftCore } from "../../core";
+import { resolveLinks } from "../../core/links";
 import type { MailSummary } from "../types";
 
 /** One message as yielded by `SiftCore.getMessagesStream`. */
@@ -34,18 +35,16 @@ export function toMailSummary(message: CoreMessage): MailSummary {
 
 /**
  * The message as readable text. Uses the plain text when there is one, and
- * otherwise turns the processed markdown back into text, replacing the masked
- * link placeholders (`[text](LINK_3)`) with the link text.
+ * otherwise turns the processed markdown back into text, resolving the masked
+ * link placeholders (`[text](LINK_3)`) to the real URLs.
  */
 export function plainTextOf(mail: MailSummary): string {
   const text = mail.text.trim();
   if (text !== "") return text;
 
-  return mail.content.content
-    .replace(/!\[([^\]]*)\]\(LINK_\d+\)/g, (_, alt: string) =>
-      alt ? `[image: ${alt}]` : "[image]",
-    )
-    .replace(/\[([^\]]*)\]\(LINK_\d+\)/g, "$1")
+  // The processed body carries placeholders, not addresses; resolve them so the
+  // preview shows the real links.
+  return resolveLinks(mail.content.content, mail.content.links)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

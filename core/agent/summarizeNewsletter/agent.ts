@@ -131,7 +131,6 @@ export class NewsletterSummarizationAgent extends BaseAgent<
       if (metadata?.langgraph_node !== "model_request") continue;
 
       if (AIMessageChunk.isInstance(message) && message.text) {
-        process.stdout.write(message.text);
         yield message.text;
       }
     }
