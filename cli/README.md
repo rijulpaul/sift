@@ -47,12 +47,20 @@ The TUI reads these from `core.config`. Each one is also a CLI flag.
 | `y` / `n`                 | –                                       | confirm / cancel a delete                   |
 | `g` / `G`                 | first / last mail                       | top / bottom of the message                 |
 | `ctrl+d` / `ctrl+u`       | page down / up                          | page down / up                              |
+| `<` / `>`                 | move the pane divider                   | move the pane divider                       |
 | `q` / `ctrl+c`            | quit                                    | quit                                        |
 
 **Mouse:** click a row to open it · click a pane to focus it · wheel to scroll ·
 the **All / Unread** control above the list · the **Summarize**, **Mark as read /
 Mark as unread** and **Delete** buttons above the message (Delete asks first).
-The read button flips the mail's state, so it works both ways.
+The read button flips the mail's state, so it works both ways. **Drag the border
+between the list and the preview** to resize the list.
+
+The divider shows a small bright mark in its middle: that is the grip. It is
+centred on the seam of the two border columns — two half blocks, `▐` on the
+list's border and `▌` on the preview's — so it straddles the line instead of
+sitting on one side of it. It means the line can be moved: drag it, or press `<`
+/ `>` to nudge it a few columns at a time.
 
 ## What the preview shows
 
@@ -65,6 +73,9 @@ The read button flips the mail's state, so it works both ways.
 
 - **Split** at 80+ columns: list ≈ 36% (30–56 cols). **Stacked** below that: one pane
   at a time, `enter` opens the message, `h`/`esc` goes back. Resizing switches live.
+  On a split screen the border between the panes can be **dragged** (or nudged with
+  `<` / `>`) to move the split; the list stops at 30 columns and at 60% of the
+  terminal. A width you chose survives a terminal resize.
 - **Startup** shows unread mail. Press `u` for everything.
 - Unread mail is marked with **●** in the list.
 - **Streaming:** the list fills in as the core yields mail, so the first message
@@ -108,7 +119,7 @@ cli/
   lib/format.ts     sender and time formatting (pure)
   lib/fit.ts        cell-aware truncation (pure)
   components/       Pane, MailList, MailListItem, MailPreview, StatusBar,
-                    Button, EllipsisText, primitives
+                    DividerHandle, Button, EllipsisText, primitives
   mock.ts, demo.ts  a mock SiftCore and a runnable demo
 ```
 
