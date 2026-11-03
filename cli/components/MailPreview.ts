@@ -1,5 +1,6 @@
 import {
   BoxRenderable,
+  ImageRenderable,
   TextRenderable,
   type RenderContext,
   type ScrollBoxRenderable,
@@ -8,16 +9,30 @@ import {
 import { formatFullDate, parseSender } from "../lib/format";
 import {
   PREVIEW_EMPTY_MESSAGE,
+  bodySegments,
   bodyView,
+  imageCaption,
   labelsLine,
   readActionLabel,
   summaryActionLabel,
+  type BodySegmentSpec,
+  type TextStyle,
 } from "../lib/preview";
 import type { BodyState, SummaryState } from "../state";
 import { attr, theme } from "../theme";
 import type { MailSummary } from "../types";
 import { Button, ACTION_STYLE } from "./Button";
 import { Pane, Placeholder, createScrollBox } from "./primitives";
+
+/** Most of the screen a picture may span, however wide the terminal is. */
+const IMAGE_WIDTH_RATIO = 0.75;
+
+/**
+ * Most of the screen a picture may span vertically. A picture still keeps its
+ * shape: whatever hits its limit first wins, so tall art stops here and wide
+ * art stops at the width above. A summary should not become a gallery.
+ */
+const IMAGE_HEIGHT_RATIO = 0.5;
 
 export type PreviewView =
   | { kind: "empty" }
@@ -40,6 +55,26 @@ export interface PreviewProps {
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
 }
+
+/** A picture, drawn with its address underneath. */
+type ImageSegment = Extract<BodySegment, { kind: "image" }>;
+
+/** What is drawn. Kept between renders so a stream only changes what changed. */
+/** The look of each style of text. */
+const TEXT_STYLE: Record<TextStyle, { fg: string; attributes: number }> = {
+  title: { fg: theme.strong, attributes: attr.bold },
+  body: { fg: theme.text, attributes: attr.none },
+  note: { fg: theme.muted, attributes: attr.none },
+};
+
+type BodySegment =
+  | { kind: "text"; node: TextRenderable; text: string; style: TextStyle }
+  | {
+      kind: "image";
+      node: ImageRenderable;
+      caption: TextRenderable;
+      url: string;
+    };
 
 /** `Label   value` line in the message header. Wraps long values. */
 class MetaRow {
@@ -81,7 +116,7 @@ class MetaRow {
 
 /**
  * The right pane: the message header (subject, from, date, labels), the
- * actions, and the body (its text, or its summary), all in one scroll view.
+ * actions, and the body — its text, or its summary with pictures drawn in it.
  */
 export class MailPreview {
   readonly pane: Pane;
@@ -97,10 +132,19 @@ export class MailPreview {
   private readonly summaryButton: Button;
   private readonly readButton: Button;
   private readonly deleteButton: Button;
-  private readonly body: TextRenderable;
+  /** Holds the body segments: paragraphs of text, and pictures. */
+  private readonly body: BoxRenderable;
+  private segments: BodySegment[] = [];
+  private segmentId = 0;
+  /** Room the pictures were last fitted into, so a resize can re-fit them. */
+  private fittedWidth = 0;
+  private fittedRows = 0;
   private shownId: string | null = null;
 
-  constructor(ctx: RenderContext, props: PreviewProps) {
+  constructor(
+    private readonly ctx: RenderContext,
+    props: PreviewProps,
+  ) {
     this.pane = new Pane(ctx, {
       id: "mail-preview",
       title: "Message",
@@ -203,13 +247,14 @@ export class MailPreview {
       borderColor: theme.border,
     });
 
-    this.body = new TextRenderable(ctx, {
+    this.body = new BoxRenderable(ctx, {
       id: "mail-preview-body",
-      content: "",
-      fg: theme.text,
-      wrapMode: "word",
       width: "100%",
+      flexDirection: "column",
       flexShrink: 0,
+      // One row between sections: paragraphs, pictures and notes are told
+      // apart without the pane turning into empty space.
+      gap: 1,
     });
 
     this.scroll.add(this.subject);
@@ -225,7 +270,14 @@ export class MailPreview {
     this.pane.add(this.scroll);
     this.pane.add(this.placeholder.root);
 
+    // Layout is final after each frame, which is where a resize is noticed.
+    ctx.on("frame", this.onFrame);
+
     this.show({ kind: "empty" });
+  }
+
+  dispose(): void {
+    this.ctx.off("frame", this.onFrame);
   }
 
   get root() {
@@ -240,6 +292,7 @@ export class MailPreview {
     if (view.kind === "empty") {
       this.shownId = null;
       this.scroll.visible = false;
+      this.setSegments([]);
       this.placeholder.show(PREVIEW_EMPTY_MESSAGE);
       return;
     }
@@ -263,9 +316,7 @@ export class MailPreview {
     this.summaryButton.setLabel(summaryActionLabel(showSummary));
     this.readButton.setLabel(readActionLabel(mail.unread));
 
-    const { text, dim } = bodyView(body, showSummary, summary);
-    this.body.content = text;
-    this.body.fg = dim ? theme.muted : theme.text;
+    this.setSegments(bodySegments(bodyView(body, showSummary, summary)));
 
     // A different mail starts at the top; refreshes of the same one keep position.
     if (this.shownId !== mail.id) this.scroll.scrollTo(0);
@@ -288,4 +339,193 @@ export class MailPreview {
   pageSize(): number {
     return Math.max(1, this.scroll.viewport.height - 1);
   }
+
+  // ── the body ──────────────────────────────────────────────────────────────
+
+  /**
+   * Bring the drawn segments in line with the wanted ones. Text is updated in
+   * place — a summary streams into the same nodes — and anything whose shape
+   * changed is rebuilt from there on.
+   */
+  private setSegments(wanted: BodySegmentSpec[]): void {
+    for (let i = wanted.length; i < this.segments.length; i++) {
+      this.destroySegment(this.segments[i]!);
+    }
+    this.segments.length = Math.min(this.segments.length, wanted.length);
+
+    for (let i = 0; i < wanted.length; i++) {
+      const want = wanted[i]!;
+      const have = this.segments[i];
+
+      if (have === undefined || have.kind !== want.kind) {
+        for (let j = i; j < this.segments.length; j++) {
+          this.destroySegment(this.segments[j]!);
+        }
+        this.segments.length = i;
+        for (let j = i; j < wanted.length; j++) {
+          this.segments.push(this.createSegment(wanted[j]!));
+        }
+        return;
+      }
+
+      if (have.kind === "text" && want.kind === "text") {
+        if (have.text !== want.text) {
+          have.text = want.text;
+          have.node.content = want.text;
+        }
+        if (have.style !== want.style) {
+          have.style = want.style;
+          this.applyTextStyle(have.node, want.style);
+        }
+        continue;
+      }
+
+      if (
+        have.kind === "image" &&
+        want.kind === "image" &&
+        have.url !== want.url
+      ) {
+        have.url = want.url;
+        have.caption.content = imageCaption(want.url);
+        have.node.source = want.url; // reloads, and re-fits on load
+      }
+    }
+  }
+
+  private createSegment(want: BodySegmentSpec): BodySegment {
+    const id = `mail-preview-segment-${this.segmentId++}`;
+
+    if (want.kind === "text") {
+      const node = new TextRenderable(this.ctx, {
+        id,
+        content: want.text,
+        ...TEXT_STYLE[want.style],
+        // Character wrapping: addresses are long and unbroken, and must wrap
+        // rather than be clipped.
+        wrapMode: "char",
+        width: "100%",
+        flexShrink: 0,
+      });
+      this.body.add(node);
+      return { kind: "text", node, text: want.text, style: want.style };
+    }
+
+    const caption = new TextRenderable(this.ctx, {
+      id: `${id}-caption`,
+      content: imageCaption(want.url),
+      fg: theme.faint,
+      wrapMode: "char",
+      textAlign: "center",
+      width: "100%",
+      flexShrink: 0,
+    });
+    const node = new ImageRenderable(this.ctx, {
+      id: `${id}-image`,
+      source: want.url,
+      fit: "fit",
+      // Kitty or sixel where the terminal has them, blocks everywhere else.
+      protocol: "auto",
+      flexShrink: 0,
+      onLoad: () => {
+        if (segment !== undefined) this.fitImage(segment);
+      },
+      onError: () => {
+        caption.content = imageCaption(want.url, true);
+      },
+    });
+    let segment: ImageSegment | undefined;
+
+    // The caption belongs to the picture: no gap between them, or the two
+    // would look like separate sections.
+    const frame = new BoxRenderable(this.ctx, {
+      id: `${id}-frame`,
+      width: "100%",
+      flexDirection: "column",
+      flexShrink: 0,
+      // Pictures sit in the middle of the pane; the caption fills the width and
+      // centres its own text under them.
+      alignItems: "center",
+    });
+    frame.add(node);
+    frame.add(caption);
+    this.body.add(frame);
+
+    segment = { kind: "image", node, caption, url: want.url };
+    return segment;
+  }
+
+  private destroySegment(segment: BodySegment): void {
+    if (segment.kind === "image") {
+      const frame = segment.node.parent;
+      if (frame !== null) this.body.remove(frame);
+      frame?.destroyRecursively();
+      return;
+    }
+
+    this.body.remove(segment.node);
+    segment.node.destroyRecursively();
+  }
+
+  private applyTextStyle(node: TextRenderable, style: TextStyle): void {
+    node.fg = TEXT_STYLE[style].fg;
+    node.attributes = TEXT_STYLE[style].attributes;
+  }
+
+  /** Scale a picture to the pane, keeping its shape. */
+  private fitImage(segment: ImageSegment): void {
+    const width = this.imageMaxWidth();
+    if (width <= 0) return;
+
+    const { width: fitted, height } = segment.node.getFittedSize(
+      width,
+      this.imageMaxRows(),
+    );
+    if (fitted <= 0 || height <= 0) return; // the pixels are not here yet
+
+    segment.node.width = fitted;
+    segment.node.height = height;
+  }
+
+  /** Columns a segment may use. */
+  private contentWidth(): number {
+    const width = this.body.width;
+    if (width > 0) return width;
+    return Math.max(8, this.scroll.viewport.width - 2);
+  }
+
+  /**
+   * Columns a picture may use: the pane, but never more than three quarters of
+   * the screen, so a picture cannot take over a wide terminal.
+   */
+  private imageMaxWidth(): number {
+    const screen = this.ctx.terminalWidth ?? this.ctx.width;
+    return Math.max(
+      8,
+      Math.min(this.contentWidth(), Math.floor(screen * IMAGE_WIDTH_RATIO)),
+    );
+  }
+
+  /**
+   * Rows a picture may use: the terminal's height allows a picture to grow
+   * with the window, so a fullscreen summary shows real art rather than a
+   * stamp, while a short terminal keeps it modest.
+   */
+  private imageMaxRows(): number {
+    const screen = this.ctx.terminalHeight ?? this.ctx.height;
+    return Math.max(4, Math.floor(screen * IMAGE_HEIGHT_RATIO));
+  }
+
+  /** A resize changes the room pictures should be drawn into. */
+  private readonly onFrame = (): void => {
+    const width = this.contentWidth();
+    const rows = this.imageMaxRows();
+    if (width <= 0) return;
+    if (width === this.fittedWidth && rows === this.fittedRows) return;
+
+    this.fittedWidth = width;
+    this.fittedRows = rows;
+    for (const segment of this.segments) {
+      if (segment.kind === "image") this.fitImage(segment);
+    }
+  };
 }
