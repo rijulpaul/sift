@@ -9,12 +9,14 @@
 import { createTestRenderer } from "@opentui/core/testing";
 import { afterEach, describe, expect, it } from "bun:test";
 import { mountTui } from "../../cli";
+import { DIVIDER_STEP } from "../../cli/layout";
 import {
   createMockCore,
   createMockMessages,
   type MockCoreOptions,
 } from "../../cli/mock";
 import type { SiftCore } from "../../core";
+import { writeTinyPng } from "../helpers/tinyPng";
 
 const NOW = new Date(2024, 2, 4, 15, 0, 0);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -278,6 +280,151 @@ describe("TUI — summaries", () => {
     t.mockInput.pressKey("s");
     await until(t, (f) => f.includes(SUMMARY_TEXT));
     expect(calls.summaries).toBe(1);
+  });
+
+  it("renders the summary's JSON as a title and text, not as the document", async () => {
+    // The model streams a JSON document; the pane must show a summary, not the
+    // document with its braces and keys.
+    const summaryChunks = [
+      '{"title":"Aggregators",',
+      '"content":[{"type":"text","text":"The piece argues that "},',
+      '{"type":"text","text":"aggregators capture demand."}',
+    ];
+    const { t } = await startAll({
+      config: { summarize: true },
+      summaryChunks,
+    });
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressEnter();
+
+    const screen = await until(t, (f) =>
+      f.includes("aggregators capture demand."),
+    );
+
+    expect(screen).toContain("Aggregators");
+    expect(screen).toContain("The piece argues that");
+    expect(screen).not.toContain('"type"');
+    expect(screen).not.toContain('"content"');
+    expect(screen).not.toContain("LINK_");
+  });
+
+  it("emphasises the summary title and separates it from the text", async () => {
+    const summaryChunks = [
+      '{"title":"Quarterly review",',
+      '"content":[{"type":"text","text":"The piece argues it."}]}',
+    ];
+    const { t } = await startAll({
+      config: { summarize: true },
+      summaryChunks,
+    });
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressEnter();
+    const screen = await until(t, (f) => f.includes("Quarterly review"));
+    const lines = screen.split("\n");
+
+    // The title is bold; the body text is not.
+    const titleLine = lines.findIndex((line) =>
+      line.includes("Quarterly review"),
+    );
+    const spans = t.captureSpans() as unknown as {
+      lines: Array<{ spans: Array<{ text: string; attributes: number }> }>;
+    };
+    const titleSpan = spans.lines[titleLine]?.spans.find((span) =>
+      span.text.includes("Quarterly review"),
+    );
+
+    expect(titleSpan?.attributes).toBe(1); // 1 is bold in OpenTUI
+
+    // One blank row, then the paragraph: sections are told apart without air.
+    // Each frame row spans both panes, so only the preview half is read.
+    const previewOf = (line: string) =>
+      line.slice(line.lastIndexOf("││") + 2, -1);
+    expect(previewOf(lines[titleLine + 1]!).trim()).toBe("");
+    expect(previewOf(lines[titleLine + 2]!)).toContain("The piece argues it.");
+  });
+
+  it("draws a summary picture, captioned with its address", async () => {
+    // A local file, so the test never reaches the network for its pixels.
+    const picture = writeTinyPng(200, 20);
+    const summaryChunks = [
+      '{"title":"Aggregators",',
+      '"content":[{"type":"text","text":"The piece argues it."},',
+      `,${JSON.stringify({ type: "image", url: picture })}]}`, // the address JSON-escapes
+    ];
+
+    const { t } = await startAll({
+      config: { summarize: true },
+      summaryChunks,
+    });
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressEnter();
+
+    // Block characters appear only once the picture has loaded and been drawn,
+    // so waiting for them is what proves it rendered.
+    const screen = await until(t, (f) => /[▀▄█]/.test(f), 5000);
+
+    expect(screen).toContain("Aggregators");
+    expect(screen).toContain("The piece argues it.");
+    // The address is captioned under the picture. It is long, so it wraps: the
+    // pane border sits between the pieces of it.
+    expect(screen).toContain("image: ");
+    expect(screen).toContain("picture");
+    expect(picture).toContain("sift-image-");
+    expect(screen).not.toContain("couldn't load");
+    expect(screen).not.toContain('"type"');
+  });
+
+  it("grows summary pictures when the terminal gets taller", async () => {
+    // A square picture: the taller the terminal, the more rows it may use, and
+    // so the wider it is drawn. A wide picture would be capped by width and
+    // never move.
+    const picture = writeTinyPng(200, 200);
+    const summaryChunks = [
+      `{"title":"Aggregators","content":[${JSON.stringify({ type: "image", url: picture })}]}`,
+    ];
+
+    const { t } = await startAll(
+      { config: { summarize: true }, summaryChunks },
+      { width: 110, height: 24 },
+    );
+    await until(t, (f) => f.includes("Inbox (6)"));
+    t.mockInput.pressEnter();
+    await until(t, (f) => /[▀▄█]/.test(f), 5000);
+
+    /** The widest run of block characters: how wide the picture was drawn. */
+    const pictureWidth = (frame: string) => {
+      let widest = 0;
+      for (const line of frame.split("\n")) {
+        for (const run of line.match(/[▀▄█]+/g) ?? []) {
+          widest = Math.max(widest, run.length);
+        }
+      }
+      return widest;
+    };
+
+    const short = pictureWidth(t.captureCharFrame());
+    expect(short).toBeGreaterThan(0);
+
+    // Never wider than three quarters of the screen either way.
+    expect(short).toBeLessThanOrEqual(Math.floor(110 * 0.75));
+
+    t.resize(110, 48);
+    await t.flush();
+    const tall = await until(t, (f) => pictureWidth(f) > short, 3000);
+    expect(pictureWidth(tall)).toBeGreaterThan(short);
+
+    // And back down again when the window shrinks: the fit is not one-way.
+    t.resize(110, 24);
+    await t.flush();
+    const back = await until(
+      t,
+      (f) => pictureWidth(f) < pictureWidth(tall),
+      3000,
+    );
+    expect(pictureWidth(back)).toBe(short);
   });
 
   it("summarises straight away on open when summarize is on", async () => {
@@ -548,6 +695,142 @@ describe("TUI — mouse filter and layout (split)", () => {
     await t.mockMouse.click(10, 5); // second row (rows 5-7)
     await until(t, (f) => f.includes(SUBJECT_2));
   });
+
+  /** The column where the two panes' borders meet (`││`). */
+  const dividerColumn = (frame: string): number => {
+    const line = frame.split("\n").find((l) => l.includes("││"));
+    if (line === undefined) throw new Error(`no pane divider in:\n${frame}`);
+    return line.indexOf("││");
+  };
+
+  it("widens and narrows the list by dragging the divider", async () => {
+    const { t } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+    const before = dividerColumn(t.captureCharFrame());
+
+    await t.mockMouse.drag(before, 8, before + 12, 8);
+    await t.flush();
+    const wider = dividerColumn(t.captureCharFrame());
+    expect(wider).toBeGreaterThan(before);
+
+    await t.mockMouse.drag(wider, 8, wider - 8, 8);
+    await t.flush();
+    expect(dividerColumn(t.captureCharFrame())).toBeLessThan(wider);
+  });
+
+  it("keeps both panes usable when the divider is dragged far", async () => {
+    const { t } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+    const before = dividerColumn(t.captureCharFrame());
+
+    // Drag hard right: the list stops at 60% of the terminal, not at the edge.
+    await t.mockMouse.drag(before, 8, 105, 8);
+    await t.flush();
+    const wide = dividerColumn(t.captureCharFrame());
+    expect(wide).toBeLessThanOrEqual(Math.floor(110 * 0.6));
+    expect(wide).toBeGreaterThan(before);
+
+    // Drag hard left: the preview keeps a readable minimum, so the list stops
+    // well short of the screen edge.
+    await t.mockMouse.drag(wide, 8, 0, 8);
+    await t.flush();
+    const narrow = dividerColumn(t.captureCharFrame());
+    expect(narrow).toBeGreaterThanOrEqual(29); // listWidth 30, border at 29
+    expect(narrow).toBeLessThan(wide);
+  });
+
+  it("keeps a dragged width when the terminal is resized", async () => {
+    const { t } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+    const before = dividerColumn(t.captureCharFrame());
+
+    await t.mockMouse.drag(before, 8, before + 12, 8);
+    await t.flush();
+    const dragged = dividerColumn(t.captureCharFrame());
+    expect(dragged).toBeGreaterThan(before);
+
+    // A resize keeps the width the user chose instead of snapping back to 36%.
+    t.resize(130, 24);
+    const resized = await until(t, (f) => f.includes("Inbox (6)"));
+    expect(dividerColumn(resized)).toBe(dragged);
+  });
+
+  it("leaves the split alone when the drag starts away from the divider", async () => {
+    const { t } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+    const before = dividerColumn(t.captureCharFrame());
+
+    // Starting in the preview and sweeping left is a text selection sort of
+    // drag, not a resize: the split must not move.
+    await t.mockMouse.drag(80, 5, 40, 5);
+    await t.flush();
+    expect(dividerColumn(t.captureCharFrame())).toBe(before);
+  });
+
+  /** The row of the grip: the middle of the panes area. */
+  const gripRow = (height: number) => Math.floor((height - 1) / 2);
+
+  it("shows a grip centred on both border columns", async () => {
+    const { t } = await startAll({}, { width: 110, height: 24 });
+    const screen = await until(t, (f) => f.includes("Inbox (6)"));
+
+    const lines = screen.split("\n");
+    const row = lines[gripRow(24)]!;
+    const column = dividerColumn(screen);
+
+    // The divider is two columns, so the mark is two half blocks: the right half
+    // of the left border and the left half of the right one. Together they sit
+    // exactly on the seam between the panes.
+    expect(row[column]).toBe("|");
+    expect(row[column + 1]).toBe("|");
+    // Only one row: the borders above and below stay plain.
+    expect(lines[gripRow(24) - 1]![column]).toBe("│");
+    expect(lines[gripRow(24) + 1]![column]).toBe("│");
+    expect(lines[gripRow(24) - 1]![column + 1]).toBe("│");
+  });
+
+  it("moves the divider with > and <", async () => {
+    const { t } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+    const before = dividerColumn(t.captureCharFrame());
+
+    t.mockInput.pressKey(">");
+    await t.flush();
+    const wider = dividerColumn(t.captureCharFrame());
+    expect(wider).toBe(before + DIVIDER_STEP);
+
+    t.mockInput.pressKey("<");
+    await t.flush();
+    expect(dividerColumn(t.captureCharFrame())).toBe(before);
+  });
+
+  it("moves the grip with the divider", async () => {
+    const { t } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressKey(">");
+    await t.flush();
+
+    const frame = t.captureCharFrame();
+    const row = frame.split("\n")[gripRow(24)]!;
+    expect(row.slice(dividerColumn(frame), dividerColumn(frame) + 2)).toBe(
+      "||",
+    );
+  });
+
+  it("stops the keys at the same limits as a drag", async () => {
+    const { t } = await startAll();
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    for (let i = 0; i < 40; i++) t.mockInput.pressKey(">");
+    await t.flush();
+    const wide = dividerColumn(t.captureCharFrame());
+    expect(wide).toBeLessThanOrEqual(Math.floor(110 * 0.6));
+
+    for (let i = 0; i < 40; i++) t.mockInput.pressKey("<");
+    await t.flush();
+    expect(dividerColumn(t.captureCharFrame())).toBeGreaterThanOrEqual(29);
+  });
 });
 
 describe("TUI — bodies are fetched only when a message is opened", () => {
@@ -665,6 +948,25 @@ describe("TUI — stacked layout", () => {
     expect(screen).toBeDefined();
   });
 
+  it("keeps one full-width pane when dragged in the stacked layout", async () => {
+    const { t } = await startAll({}, narrow);
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    // Stacked layout has no divider, so dragging across the list must not leave
+    // the pane split or narrowed.
+    await t.mockMouse.drag(5, 8, 40, 8);
+    await t.flush();
+    t.mockInput.pressEscape(); // the drag may have opened a mail; go back
+    await sleep(150);
+
+    const screen = await until(t, (f) => f.includes("Inbox (6)"));
+    expect(screen).not.toContain("││");
+    // No divider means no grip either.
+    expect(screen).not.toContain("||");
+    // The one visible pane still spans the whole terminal.
+    expect(screen.split("\n")[0]!.length).toBe(narrow.width);
+  });
+
   it("switches layout live when the terminal is resized", async () => {
     const { t } = await startAll({}, narrow);
     await until(t, (f) => f.includes("Inbox (6)"));
@@ -677,9 +979,13 @@ describe("TUI — stacked layout", () => {
       (f) => f.includes("Inbox (6)") && f.includes("Message"),
     );
     expect(wide).toContain("Message");
+    // Split again means the grip is back.
+    expect(wide).toContain("||");
 
     t.resize(60, 14);
     await t.flush();
-    expect(t.captureCharFrame().split("\n")[0]).toMatch(/Message|Inbox/);
+    const narrowFrame = t.captureCharFrame();
+    expect(narrowFrame.split("\n")[0]).toMatch(/Message|Inbox/);
+    expect(narrowFrame).not.toContain("▐");
   });
 });

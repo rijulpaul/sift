@@ -3,6 +3,7 @@ import {
   CliRenderEvents,
   type CliRenderer,
   type KeyEvent,
+  type MouseEvent,
 } from "@opentui/core";
 
 import type { SiftCore } from "../core";
@@ -13,10 +14,16 @@ import {
   MailList,
   listErrorMessage,
 } from "./components/MailList";
+import { DividerHandle } from "./components/DividerHandle";
 import { MailPreview } from "./components/MailPreview";
 import { StatusBar } from "./components/StatusBar";
 import { resolveCommand, type Command } from "./keymap";
-import { computeLayout, type LayoutSpec } from "./layout";
+import {
+  DIVIDER_STEP,
+  clampListWidth,
+  computeLayout,
+  type LayoutSpec,
+} from "./layout";
 import { accountLabel } from "./lib/format";
 import { toMailBody, toMailSummary } from "./lib/mail";
 import {
@@ -48,9 +55,14 @@ export class App implements TuiHandle {
   private readonly list: MailList;
   private readonly preview: MailPreview;
   private readonly statusBar: StatusBar;
+  private readonly divider: DividerHandle;
   private layout: LayoutSpec;
   private loadToken = 0;
   private destroyed = false;
+  /** True between a press on the pane divider and the mouse button coming up. */
+  private resizing = false;
+  /** A list width the user dragged to, kept across terminal resizes. */
+  private draggedListWidth: number | null = null;
 
   constructor(
     private readonly renderer: CliRenderer,
@@ -81,6 +93,7 @@ export class App implements TuiHandle {
         this.store.dispatch({ type: "askDelete", ask: false }),
     });
     this.statusBar = new StatusBar(renderer);
+    this.divider = new DividerHandle(renderer);
     // The account is fixed for the session: set it once, not on every render.
     this.statusBar.setAccount(
       accountLabel(this.core.inbox.email, this.core.inbox.displayName),
@@ -103,6 +116,14 @@ export class App implements TuiHandle {
     this.renderer.keyInput.on("keypress", this.onKey);
     this.renderer.on(CliRenderEvents.RESIZE, this.onResize);
     this.renderer.once(CliRenderEvents.DESTROY, this.onDestroyed);
+    // The divider is not a widget of its own: the panes' touching borders are
+    // it. Watching the tree root catches a press on either border and a drag
+    // that has wandered over a pane, without covering the border with an
+    // extra renderable.
+    this.renderer.root.onMouseDown = this.onRootMouseDown;
+    this.renderer.root.onMouseDrag = this.onRootMouseDrag;
+    this.renderer.root.onMouseUp = this.onMouseUp;
+    this.renderer.root.onMouseDragEnd = this.onMouseUp;
 
     void this.reload();
   }
@@ -153,6 +174,8 @@ export class App implements TuiHandle {
     });
     panes.add(this.list.root);
     panes.add(this.preview.root);
+    // Added last, so the grip is painted over the border it sits on.
+    panes.add(this.divider.root);
 
     const shell = new BoxRenderable(this.renderer, {
       id: "shell",
@@ -173,8 +196,22 @@ export class App implements TuiHandle {
   }
 
   private applyLayout(): void {
-    this.list.root.width =
-      this.layout.mode === "split" ? this.layout.listWidth : "100%";
+    const split = this.layout.mode === "split";
+    this.list.root.width = split ? this.layout.listWidth : "100%";
+    this.placeDivider();
+  }
+
+  /**
+   * Put the grip in the middle of the divider. The panes' area is the terminal
+   * minus the footer, and the divider is the column where the two borders meet.
+   */
+  private placeDivider(): void {
+    if (this.layout.mode !== "split") {
+      this.divider.visible = false;
+      return;
+    }
+    const rows = Math.max(1, this.renderer.terminalHeight - 1);
+    this.divider.move(this.layout.listWidth - 1, Math.floor(rows / 2));
   }
 
   // ── rendering ─────────────────────────────────────────────────────────────
@@ -246,8 +283,59 @@ export class App implements TuiHandle {
     if (command) this.run(command);
   };
 
+  // ── the pane divider ──────────────────────────────────────────────────────
+
+  /** Is `x` (a terminal column) on the border shared by the two panes? */
+  private onDivider(x: number): boolean {
+    if (this.layout.mode !== "split") return false;
+    return x === this.layout.listWidth - 1 || x === this.layout.listWidth;
+  }
+
+  private readonly onRootMouseDown = (event: MouseEvent): void => {
+    if (event.button !== 0) return;
+    this.resizing = this.onDivider(event.x);
+  };
+
+  /** Follow the mouse: the list's right edge is put under the cursor. */
+  private readonly onRootMouseDrag = (event: MouseEvent): void => {
+    if (!this.resizing) return;
+    this.setListWidth(event.x + 1);
+  };
+
+  /**
+   * Move the divider to `listWidth` columns, as far as the preview can spare.
+   * A width chosen this way outlives a terminal resize.
+   */
+  private setListWidth(listWidth: number): void {
+    const width = clampListWidth(listWidth, this.renderer.terminalWidth);
+    this.draggedListWidth = width;
+    if (width === this.layout.listWidth) return;
+    this.layout = { ...this.layout, listWidth: width };
+    this.applyLayout();
+  }
+
+  /** `<` / `>`: nudge the divider a few columns at a time. */
+  private nudgeDivider(columns: number): void {
+    if (this.layout.mode !== "split") return;
+    this.setListWidth(this.layout.listWidth + columns);
+  }
+
+  private readonly onMouseUp = (): void => {
+    this.resizing = false;
+  };
+
   private readonly onResize = (): void => {
-    this.layout = computeLayout(this.renderer.terminalWidth);
+    const width = this.renderer.terminalWidth;
+    const computed = computeLayout(width);
+    // A width the user chose by hand survives a resize; the default does not,
+    // so a wide terminal still gets the comfortable default split.
+    this.layout =
+      this.draggedListWidth !== null && computed.mode === "split"
+        ? {
+            ...computed,
+            listWidth: clampListWidth(this.draggedListWidth, width),
+          }
+        : computed;
     this.applyLayout();
     this.store.dispatch({ type: "layout", mode: this.layout.mode });
     // Pane visibility depends on the mode; re-render even if only the width changed.
@@ -259,7 +347,12 @@ export class App implements TuiHandle {
     this.destroyed = true;
     this.renderer.keyInput.off("keypress", this.onKey);
     this.renderer.off(CliRenderEvents.RESIZE, this.onResize);
+    this.renderer.root.onMouseDown = undefined;
+    this.renderer.root.onMouseDrag = undefined;
+    this.renderer.root.onMouseUp = undefined;
+    this.renderer.root.onMouseDragEnd = undefined;
     this.list.dispose();
+    this.preview.dispose();
     this.options.onExit?.();
   };
 
@@ -274,6 +367,12 @@ export class App implements TuiHandle {
         return;
       case "refresh":
         void this.reload();
+        return;
+      case "narrower":
+        this.nudgeDivider(-DIVIDER_STEP);
+        return;
+      case "wider":
+        this.nudgeDivider(DIVIDER_STEP);
         return;
       case "toggleUnread":
         this.applyFilter(state.filter === "unread" ? "all" : "unread");
