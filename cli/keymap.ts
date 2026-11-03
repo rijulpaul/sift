@@ -22,6 +22,8 @@ export type Command =
   | "delete"
   | "confirm"
   | "deny"
+  | "narrower"
+  | "wider"
   | "quit";
 
 /** The subset of OpenTUI's `KeyEvent` the keymap reads. */
@@ -59,6 +61,8 @@ const PLAIN: Record<string, Command> = {
   d: "delete",
   y: "confirm",
   n: "deny",
+  ",": "narrower",
+  ".": "wider",
   q: "quit",
 };
 
@@ -74,6 +78,12 @@ export function resolveCommand(key: KeyLike): Command | undefined {
   // `G` (shift+g) jumps to the end; plain `g` jumps to the start.
   if (key.name === "g" && (key.shift || key.sequence === "G")) return "last";
 
+  // `<` / `>` move the divider. Terminals report them either as their own keys
+  // or as a shifted `,` / `.`, and both spellings are in the table, so either
+  // arrives as the same command.
+  if (key.name === "<" || key.sequence === "<") return "narrower";
+  if (key.name === ">" || key.sequence === ">") return "wider";
+
   return PLAIN[key.name];
 }
 
@@ -85,6 +95,9 @@ export const HINTS = {
     ["u", "all/unread"],
     ["r", "refresh"],
     ["q", "quit"],
+    // Least essential, so it is the first hint dropped on a narrow terminal;
+    // the grip on the divider still shows the panes can be moved.
+    ["</>", "resize"],
   ],
   preview: [
     ["j/k", "scroll"],
@@ -93,6 +106,7 @@ export const HINTS = {
     ["d", "delete"],
     ["h", "back"],
     ["q", "quit"],
+    ["</>", "resize"],
   ],
   confirm: [
     ["y", "delete"],

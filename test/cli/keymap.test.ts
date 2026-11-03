@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveCommand } from "../../cli/keymap";
+import { HINTS, resolveCommand } from "../../cli/keymap";
 
 describe("resolveCommand", () => {
   it.each([
@@ -32,6 +32,19 @@ describe("resolveCommand", () => {
     expect(resolveCommand({ name })).toBe(command);
   });
 
+  it("maps < and > to moving the divider", () => {
+    expect(resolveCommand({ name: "<", sequence: "<" })).toBe("narrower");
+    expect(resolveCommand({ name: ">", sequence: ">" })).toBe("wider");
+  });
+
+  it("takes a shifted , or . as the same divider keys", () => {
+    // Some terminals report `>` as shift+`.`, and others as `>` itself.
+    expect(resolveCommand({ name: ",", shift: true })).toBe("narrower");
+    expect(resolveCommand({ name: ".", shift: true })).toBe("wider");
+    expect(resolveCommand({ name: "," })).toBe("narrower");
+    expect(resolveCommand({ name: "." })).toBe("wider");
+  });
+
   it("maps shift+g (and a literal G) to last", () => {
     expect(resolveCommand({ name: "g", shift: true })).toBe("last");
     expect(resolveCommand({ name: "g", sequence: "G" })).toBe("last");
@@ -49,5 +62,13 @@ describe("resolveCommand", () => {
 
   it("ignores unmapped keys", () => {
     expect(resolveCommand({ name: "z" })).toBeUndefined();
+  });
+});
+
+describe("HINTS", () => {
+  it("offers the divider keys in both panes", () => {
+    for (const set of [HINTS.list, HINTS.preview]) {
+      expect(set.map((hint) => hint.join(" "))).toContain("</> resize");
+    }
   });
 });
