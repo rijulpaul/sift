@@ -9,6 +9,7 @@
 import { createTestRenderer } from "@opentui/core/testing";
 import { afterEach, describe, expect, it } from "bun:test";
 import { mountTui } from "../../cli";
+import { theme } from "../../cli/theme";
 import { DIVIDER_STEP } from "../../cli/layout";
 import {
   createMockCore,
@@ -106,6 +107,70 @@ async function startAll(
   harness.t.mockInput.pressKey("u");
   await until(harness.t, (f) => f.includes(`Inbox (${count})`));
   return harness;
+}
+
+/**
+ * Click the first picture drawn on screen. Pictures are runs of block
+ * characters; the scrollbar is a single `█`, so a run of five is a picture.
+ */
+async function clickPicture(t: Harness) {
+  await t.flush();
+  const lines = t.captureCharFrame().split("\n");
+  for (let y = 0; y < lines.length; y++) {
+    const match = /[▀▄█]{5,}/.exec(lines[y]!);
+    if (match) {
+      await t.mockMouse.click(match.index + 2, y);
+      await t.flush();
+      return;
+    }
+  }
+  throw new Error("no picture on screen");
+}
+
+/**
+ * The colours of the first picture row, cell by cell. A picture is drawn as
+ * coloured blocks, so two different parts of it have different colours — which
+ * is how a pan or a zoom can be seen in a character frame.
+ */
+function pictureCells(t: Harness): string[] {
+  const frame = t.captureCharFrame().split("\n");
+  const y = frame.findIndex((line) => /[▀▄█]{5,}/.test(line));
+  if (y < 0) throw new Error("no picture on screen");
+  const start = frame[y]!.search(/[▀▄█]{5,}/);
+  const width = /[▀▄█]+/.exec(frame[y]!.slice(start))![0].length;
+
+  const spans = t.captureSpans() as unknown as {
+    lines: Array<{
+      spans: Array<{ text: string; fg?: { r: number; g: number } }>;
+    }>;
+  };
+
+  const cells = spans.lines[y]!.spans.flatMap((span) => {
+    const colour = `${span.fg?.r.toFixed(2)}/${span.fg?.g.toFixed(2)}`;
+    return Array.from({ length: [...span.text].length }, () => colour);
+  });
+
+  return cells.slice(start, start + width);
+}
+
+/** The red channel of a theme colour, e.g. "#101010" → 16. */
+const hexToChannel = (hex: string): number => parseInt(hex.slice(1, 3), 16);
+
+/** The background colour of one cell, as r/g/b (0-255). */
+function bgAt(t: Harness, x: number, y: number): number[] {
+  const spans = t.captureSpans() as unknown as {
+    lines: Array<{
+      spans: Array<{ text: string; bg?: { toInts(): number[] } }>;
+    }>;
+  };
+
+  let column = 0;
+  for (const span of spans.lines[y]!.spans) {
+    const length = [...span.text].length;
+    if (x < column + length) return span.bg?.toInts() ?? [0, 0, 0, 0];
+    column += length;
+  }
+  return [0, 0, 0, 0];
 }
 
 afterEach(async () => {
@@ -969,6 +1034,218 @@ describe("TUI — mouse filter and layout (split)", () => {
     for (let i = 0; i < 40; i++) t.mockInput.pressKey("<");
     await t.flush();
     expect(dividerColumn(t.captureCharFrame())).toBeGreaterThanOrEqual(29);
+  });
+});
+
+describe("TUI — the picture overlay", () => {
+  /** Open the first mail with a picture in its body, and click the picture. */
+  async function openPicture(text?: string) {
+    const picture = writeTinyPng(200, 120);
+    const harness = await start({
+      messages: markdownMail(
+        text ?? `Before.\n\n![A chart](${picture})\n\nAfter.`,
+      ),
+    });
+    await until(harness.t, (f) => f.includes("Unread (1)"));
+    harness.t.mockInput.pressEnter();
+    await until(harness.t, (f) => f.includes("Before."));
+    await clickPicture(harness.t);
+    return { ...harness, picture };
+  }
+
+  it("opens on its own when the picture is clicked", async () => {
+    const { t } = await openPicture();
+
+    const screen = await until(t, (f) => f.includes("esc close"));
+
+    expect(screen).toContain("100%");
+    expect(screen).toContain("×");
+    // Drawn much larger than in the pane, with no frame of its own.
+    const row = screen.split("\n").find((l) => /[▀▄█]{5,}/.test(l))!;
+    expect(/[▀▄█]+/.exec(row)![0].length).toBeGreaterThan(40);
+  });
+
+  it("leaves the mail readable behind the picture", async () => {
+    // A wide, shallow picture, so the picture floats over the middle of the mail
+    // and the mail stays visible around it.
+    const flat = writeTinyPng(200, 20);
+    const { t } = await openPicture(`Before.\n\n![A chart](${flat})\n\nAfter.`);
+    const screen = await until(t, (f) => f.includes("esc close"));
+
+    // The overlay paints no background of its own: the mail shows through.
+    expect(screen).toContain("Summarize");
+    expect(screen).toContain("After.");
+    expect(screen).toContain("image: "); // the pane's own caption
+    expect(screen).toContain("unread · 1/1"); // and the footer, behind the hint
+    // …and the picture is drawn over it.
+    expect(/[▀▄█]{5,}/.test(screen)).toBe(true);
+  });
+
+  it("veils the mail with a translucent layer instead of covering it", async () => {
+    // A wide, shallow picture: most of the pane stays free for the mail behind
+    // the veil, so its colours can be read.
+    const flat = writeTinyPng(200, 20);
+    const { t } = await start({
+      messages: markdownMail(`Before.\n\n![A chart](${flat})\n\nAfter.`),
+    });
+    await until(t, (f) => f.includes("Unread (1)"));
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes("Before."));
+
+    const pane = hexToChannel(theme.surface);
+    const veil = hexToChannel(theme.bg);
+    const before = bgAt(t, 60, 20)[0]!;
+    expect(before).toBe(pane);
+
+    await clickPicture(t);
+    await until(t, (f) => f.includes("esc close"));
+    const after = bgAt(t, 60, 20)[0]!;
+
+    // Darker than the pane, but not the veil's own colour: the terminal blended
+    // the two, which is what makes the layer see-through.
+    expect(after).toBeLessThan(pane);
+    expect(after).toBeGreaterThan(veil);
+  });
+
+  it("puts the close button in the extreme top right corner", async () => {
+    const { t } = await openPicture();
+    const screen = await until(t, (f) => f.includes("esc close"));
+
+    const lines = screen.split("\n");
+    // A square button around the cross — one space either side — flush with the
+    // top right of the screen.
+    expect(lines[0]!.endsWith("┌───┐")).toBe(true);
+    expect(lines[1]!.endsWith("│ × │")).toBe(true);
+    expect(lines[2]!.endsWith("└───┘")).toBe(true);
+  });
+
+  it("zooms with ctrl+wheel and moves sideways with shift+wheel", async () => {
+    // A wide picture: once zoomed, all of its overflow is horizontal, so a
+    // sideways gesture is the only one that changes what is on screen.
+    const flat = writeTinyPng(2000, 200);
+    const { t } = await openPicture(`Before.\n\n![A chart](${flat})\n\nAfter.`);
+    await until(t, (f) => f.includes("100%"));
+
+    // Ctrl+wheel is the gesture for zooming.
+    await t.mockMouse.scroll(20, 5, "up", { modifiers: { ctrl: true } });
+    await until(t, (f) => f.includes("150%"));
+    await t.mockMouse.scroll(20, 5, "down", { modifiers: { ctrl: true } });
+    await until(t, (f) => f.includes("100%"));
+
+    t.mockInput.pressKey("=");
+    t.mockInput.pressKey("=");
+    await until(t, (f) => f.includes("200%"));
+
+    // There is nothing above or below to reach: a plain wheel does nothing…
+    const before = pictureCells(t);
+    await t.mockMouse.scroll(20, 5, "down");
+    await t.flush();
+    expect(pictureCells(t)).toEqual(before);
+
+    // …and Shift+wheel moves along the picture.
+    await t.mockMouse.scroll(20, 5, "down", { modifiers: { shift: true } });
+    await t.flush();
+    expect(pictureCells(t)).not.toEqual(before);
+  });
+
+  it("zooms in with = and back out with -", async () => {
+    const { t } = await openPicture();
+    await until(t, (f) => f.includes("100%"));
+
+    t.mockInput.pressKey("=");
+    await until(t, (f) => f.includes("150%"));
+
+    t.mockInput.pressKey("=");
+    await until(t, (f) => f.includes("200%"));
+
+    t.mockInput.pressKey("-");
+    await until(t, (f) => f.includes("150%"));
+
+    // `0` puts it back to the whole picture.
+    t.mockInput.pressKey("0");
+    await until(t, (f) => f.includes("100%"));
+  });
+
+  it("moves the picture with h/l and the arrows", async () => {
+    const { t } = await openPicture();
+    await until(t, (f) => f.includes("100%"));
+
+    // Zoomed in, the picture is bigger than the window, so there is something
+    // to move to: the colours at a given cell change.
+    t.mockInput.pressKey("=");
+    t.mockInput.pressKey("=");
+    await until(t, (f) => f.includes("200%"));
+
+    const before = pictureCells(t);
+    t.mockInput.pressKey("l");
+    t.mockInput.pressKey("l");
+    await t.flush();
+    const moved = pictureCells(t);
+    expect(moved).not.toEqual(before);
+
+    // The opposite keys bring the same part back.
+    t.mockInput.pressKey("h");
+    t.mockInput.pressKey("h");
+    await t.flush();
+    expect(pictureCells(t)).toEqual(before);
+  });
+
+  it("pans with the wheel", async () => {
+    const { t } = await openPicture();
+    await until(t, (f) => f.includes("100%"));
+    t.mockInput.pressKey("=");
+    t.mockInput.pressKey("=");
+    await until(t, (f) => f.includes("200%"));
+
+    const before = pictureCells(t);
+    await t.mockMouse.scroll(20, 5, "down");
+    await t.flush();
+
+    expect(pictureCells(t)).not.toEqual(before);
+  });
+
+  it("closes on the cross, on esc and on q", async () => {
+    const { t } = await openPicture();
+    await until(t, (f) => f.includes("esc close"));
+
+    // The cross is in the top right corner of the picture: click it.
+    await clickText(t, "×");
+    await until(t, (f) => f.includes("Before."));
+    expect(t.captureCharFrame()).not.toContain("esc close");
+
+    await clickPicture(t);
+    await until(t, (f) => f.includes("esc close"));
+    t.mockInput.pressEscape();
+    await sleep(150); // Esc is told apart from escape sequences after a delay
+    await until(t, (f) => f.includes("Before."));
+
+    await clickPicture(t);
+    await until(t, (f) => f.includes("esc close"));
+    t.mockInput.pressKey("q");
+    await until(t, (f) => f.includes("Before."));
+  });
+
+  it("opens the picture of a summary the same way", async () => {
+    const picture = writeTinyPng(200, 120);
+    const summaryChunks = [
+      JSON.stringify({
+        title: "Aggregators",
+        content: [
+          { type: "text", text: "The piece argues it." },
+          { type: "image", url: picture },
+        ],
+      }),
+    ];
+    const { t } = await start({ config: { summarize: true }, summaryChunks });
+    await until(t, (f) => f.includes("Unread (2)"));
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes("The piece argues it."));
+
+    await clickPicture(t);
+    const screen = await until(t, (f) => f.includes("esc close"));
+
+    expect(screen).toContain("×");
+    expect(screen).not.toContain("The piece argues it.");
   });
 });
 
