@@ -250,6 +250,145 @@ describe("TUI — preview and labels", () => {
   });
 });
 
+/** One message whose body is the given markdown. */
+const markdownMail = (text: string) => [
+  {
+    id: "1",
+    from: "Stratechery <email@stratechery.com>",
+    subject: "Aggregators and the long tail of attention",
+    receivedAt: NOW,
+    labels: ["unread", "inbox"],
+    text,
+  },
+];
+
+describe("TUI — the message is markdown", () => {
+  it("draws the markdown rather than its source", async () => {
+    const { t } = await start({
+      messages: markdownMail(
+        [
+          "# The aggregator question",
+          "",
+          "Ben writes that **aggregators** own demand.",
+          "",
+          "Read [the full article](https://stratechery.com/aggregators) now.",
+        ].join("\n"),
+      ),
+    });
+    await until(t, (f) => f.includes("Unread (1)"));
+    t.mockInput.pressEnter();
+
+    const screen = await until(t, (f) => f.includes("The aggregator question"));
+
+    // Markers are concealed: no `#`, no `**`, no `[](url)`.
+    expect(screen).not.toContain("#");
+    expect(screen).not.toContain("**");
+    expect(screen).not.toContain("](");
+    // The link keeps its label, and the address is shown beside it.
+    expect(screen).toContain("the full article");
+    expect(screen).toContain("https://stratechery.com/aggregators");
+  });
+
+  it("draws a markdown heading in bold", async () => {
+    const { t } = await start({
+      messages: markdownMail("# The aggregator question\n\nBody text."),
+    });
+    await until(t, (f) => f.includes("Unread (1)"));
+    t.mockInput.pressEnter();
+    const screen = await until(t, (f) => f.includes("The aggregator question"));
+
+    const headingLine = screen
+      .split("\n")
+      .findIndex((l) => l.includes("The aggregator question"));
+    const spans = t.captureSpans() as unknown as {
+      lines: Array<{ spans: Array<{ text: string; attributes: number }> }>;
+    };
+    const headingSpan = spans.lines[headingLine]?.spans.find((span) =>
+      span.text.includes("The aggregator question"),
+    );
+
+    expect(headingSpan?.attributes).toBe(1); // 1 is bold in OpenTUI
+  });
+
+  it("draws pictures in the message the way a summary draws them", async () => {
+    // A local file, so the test never reaches the network for its pixels. Wide
+    // and short, so the picture and the prose around it all fit on screen.
+    const picture = writeTinyPng(200, 20);
+    const { t } = await start({
+      messages: markdownMail(
+        [
+          "Before the picture.",
+          `![Chart of growth](${picture})`,
+          "After the picture.",
+        ].join("\n\n"),
+      ),
+    });
+    await until(t, (f) => f.includes("Unread (1)"));
+    t.mockInput.pressEnter();
+
+    // Blocks appear once the picture has loaded, the prose once the markdown
+    // parser has run; wait for both.
+    const screen = await until(
+      t,
+      (f) =>
+        /[▀▄█]/.test(f) &&
+        f.includes("Before the picture.") &&
+        f.includes("After the picture."),
+      5000,
+    );
+
+    // The picture came out of the markdown, into a block of its own.
+    expect(screen).not.toContain("![");
+    expect(screen).toContain("image: ");
+    expect(picture).toContain("sift-image-");
+    expect(screen).not.toContain("couldn't load");
+
+    // Centred in the pane, the way a summary's picture is: only the preview half
+    // of the row is measured, and the space either side is compared.
+    const previewOf = (line: string) =>
+      line.slice(line.lastIndexOf("││") + 2, -1);
+    const row = previewOf(
+      screen.split("\n").find((line) => /[▀▄█]/.test(line))!,
+    );
+    const drawn = row.match(/[▀▄█]+/)![0];
+    const left = row.indexOf(drawn);
+    const right = row.length - (left + drawn.length);
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(2);
+  });
+
+  it("says so when a picture in the message cannot be loaded", async () => {
+    const { t } = await start({
+      messages: markdownMail(
+        "Text.\n\n![Missing](https://127.0.0.1:9/nothing.png)\n\nMore text.",
+      ),
+    });
+    await until(t, (f) => f.includes("Unread (1)"));
+    t.mockInput.pressEnter();
+
+    const screen = await until(
+      t,
+      (f) => f.includes("couldn't load") && f.includes("More text."),
+      5000,
+    );
+
+    expect(screen).toContain("image: https://127.0.0.1:9/nothing.png");
+  });
+
+  it("keeps a plain note literal instead of reading it as markdown", async () => {
+    // A failure message is shown as written: `*` and `_` are punctuation here,
+    // not emphasis.
+    const { t } = await start({ failGet: "a *b* and _c_ broke" });
+    await until(t, (f) => f.includes("Unread (2)"));
+    t.mockInput.pressEnter();
+
+    const screen = await until(t, (f) =>
+      f.includes("Couldn't load this message."),
+    );
+
+    expect(screen).toContain("a *b* and _c_ broke");
+  });
+});
+
 describe("TUI — summaries", () => {
   it("the Summarize button streams a summary into the viewer", async () => {
     const { t, calls } = await startAll({ config: { summarize: false } });
