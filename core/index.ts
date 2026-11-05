@@ -25,6 +25,7 @@ export interface MessageDetail {
   receivedAt: Date;
   labels: string[];
   text: string;
+  html: string;
   body: MaskedContent;
 }
 
@@ -137,8 +138,9 @@ export class SiftCore {
       subject: message.subject ?? "",
       receivedAt: message.timestamp,
       labels: message.labels ?? [],
-      text: message.text ?? "",
-      body: processNewsletter(message.html ?? ""),
+      text: processNewsletter(message.html ?? "", false).content,
+      html: message.html ?? "",
+      body: processNewsletter(message.html ?? "", true),
     };
 
     log.info(

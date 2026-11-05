@@ -170,25 +170,37 @@ function maskLinks(html: string): MaskedContent {
   };
 }
 
-export function processNewsletter(newsletter_html: string) {
+export function processNewsletter(newsletter_html: string, mask_links?: boolean) {
   log.debug({ chars: newsletter_html.length }, "processing newsletter");
 
   newsletter_html = cleanHtml(newsletter_html);
-  log.debug({ chars: newsletter_html.length }, "cleaned html");
+  log.debug({ chars: newsletter_html.length, mask_links }, "cleaned html");
 
-  const masked_newsletter = maskLinks(newsletter_html);
+  if (mask_links) {
+    const masked_newsletter = maskLinks(newsletter_html);
 
-  const links = Object.values(masked_newsletter.links);
-  const images = links.filter((link) => link.isImage).length;
-  const hyperlinks = links.length - images;
-  log.debug({ images, hyperlinks }, "masked links");
+    const links = Object.values(masked_newsletter.links);
+    const images = links.filter((link) => link.isImage).length;
+    const hyperlinks = links.length - images;
+    log.debug({ images, hyperlinks }, "masked links");
 
-  masked_newsletter.content = htmlToMarkdown(masked_newsletter.content);
+    masked_newsletter.content = htmlToMarkdown(masked_newsletter.content);
 
-  log.info(
-    { images, hyperlinks, chars: masked_newsletter.content.length },
-    "newsletter processed to markdown",
-  );
+    log.info(
+      { images, hyperlinks, chars: masked_newsletter.content.length },
+      "newsletter processed to markdown with link masking",
+    );
 
-  return masked_newsletter;
+    return masked_newsletter;
+  } else {
+    const markdown = htmlToMarkdown(newsletter_html)
+    log.info(
+      { chars: markdown.length },
+      "newsletter processed to markdown",
+    );
+    return {
+      content: markdown,
+      links: {}
+    }
+  }
 }

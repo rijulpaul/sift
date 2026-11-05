@@ -127,11 +127,14 @@ describe("htmlToMarkdown", () => {
 // Links are replaced with LINK_<id> placeholders and the real URL is kept
 // in a map. The LLM then references ids (never raw URLs) — this avoids the
 // model hallucinating or mangling long tracking URLs.
+//
+// Masking is opt-in: `processNewsletter(html, true)`. The reader-facing text is
+// processed without it, so the links a person clicks stay real.
 describe("maskLinks", () => {
   it("masks hyperlink hrefs and records the real url", () => {
     const html = `<a href="https://example.com/article">Read more</a>`;
 
-    const { content, links } = processNewsletter(html);
+    const { content, links } = processNewsletter(html, true);
 
     // The markdown link now points at the placeholder id...
     expect(content).toContain("[Read more](LINK_0)");
@@ -148,7 +151,7 @@ describe("maskLinks", () => {
   it("masks images, keeping alt/title metadata", () => {
     const html = `<img src="https://ex.com/chart.png" alt="Growth chart" title="Q3 chart">`;
 
-    const { content, links } = processNewsletter(html);
+    const { content, links } = processNewsletter(html, true);
 
     expect(content).toContain("LINK_0");
     expect(links[0]).toEqual({
@@ -166,7 +169,7 @@ describe("maskLinks", () => {
       <img src="pic.png" alt="pic">
       <a href="/second">two</a>`;
 
-    const { content, links } = processNewsletter(html);
+    const { content, links } = processNewsletter(html, true);
 
     // maskLinks processes $("img[src]") first (id 0 = the image),
     // then $("a[href]") (ids 1, 2 = the links)
@@ -176,5 +179,74 @@ describe("maskLinks", () => {
     expect(content).toContain("![pic](LINK_0)");
     expect(content).toContain("[one](LINK_1)");
     expect(content).toContain("[two](LINK_2)");
+  });
+
+  it("leaves the cleaned html unmasked before the second step", () => {
+    // Masking happens between cleaning and markdown: the html that reaches the
+    // markdown step still has its tracking pixels and styles removed.
+    const html = `
+      <p class="lead" style="color: red">Hello</p>
+      <img src="https://tracker.example/pixel.gif" width="1" height="1">
+      <a href="https://example.com/deep/dive">Read</a>`;
+
+    const { content } = processNewsletter(html, true);
+
+    expect(content).toContain("[Read](LINK_0)");
+    expect(content).not.toContain("tracker.example");
+    expect(content).not.toContain("color: red");
+    expect(content).not.toContain("<p");
+  });
+});
+
+// ── the same pipeline with masking off ─────────────────────────────────────
+// `processNewsletter(html)` (and an explicit `false`) keeps every URL as it is:
+// that is the text a person reads, and the links in it must be clickable. No
+// placeholders are produced, so the map comes back empty.
+describe("processNewsletter without masking", () => {
+  it("does not mask by default", () => {
+    const html = `<a href="https://example.com/article">Read more</a>`;
+
+    const { content, links } = processNewsletter(html);
+
+    expect(content).toContain("https://example.com/article");
+    expect(content).not.toContain("LINK_0");
+    expect(links).toEqual({});
+  });
+
+  it("keeps the urls when masking is switched off explicitly", () => {
+    const html = `<img src="https://ex.com/chart.png" alt="Growth chart">`;
+
+    const { content, links } = processNewsletter(html, false);
+
+    expect(content).toContain("![Growth chart](https://ex.com/chart.png)");
+    expect(links).toEqual({});
+  });
+
+  it("hands back markdown, not html", () => {
+    const html = `<h2>Subtitle</h2><p>Body text</p>`;
+
+    const { content } = processNewsletter(html, false);
+
+    expect(content).toContain("## Subtitle");
+    expect(content).toContain("Body text");
+    expect(content).not.toContain("<p");
+  });
+
+  it("cleans the html exactly as the masked path does", () => {
+    // The flag only decides what happens to the URLs: tracking pixels, hidden
+    // elements and style attributes go either way.
+    const html = `
+      <div style="display: none">hidden promo box</div>
+      <script>alert("tracking")</script>
+      <p class="lead" style="color: red">Plain text now</p>`;
+
+    const unmasked = processNewsletter(html, false);
+    const masked = processNewsletter(html, true);
+
+    expect(unmasked.content).not.toContain("hidden promo box");
+    expect(unmasked.content).not.toContain("alert");
+    expect(unmasked.content).not.toContain("color: red");
+    expect(unmasked.content).toContain("Plain text now");
+    expect(unmasked.content).toBe(masked.content);
   });
 });
