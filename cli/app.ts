@@ -15,6 +15,7 @@ import {
   listErrorMessage,
 } from "./components/MailList";
 import { DividerHandle } from "./components/DividerHandle";
+import { ImageOverlay } from "./components/ImageOverlay";
 import { MailPreview } from "./components/MailPreview";
 import { StatusBar } from "./components/StatusBar";
 import { resolveCommand, type Command } from "./keymap";
@@ -56,6 +57,7 @@ export class App implements TuiHandle {
   private readonly preview: MailPreview;
   private readonly statusBar: StatusBar;
   private readonly divider: DividerHandle;
+  private readonly overlay: ImageOverlay;
   private layout: LayoutSpec;
   private loadToken = 0;
   private destroyed = false;
@@ -91,9 +93,17 @@ export class App implements TuiHandle {
       onConfirmDelete: () => void this.confirmDelete(),
       onCancelDelete: () =>
         this.store.dispatch({ type: "askDelete", ask: false }),
+      onImage: (url) => this.showImage(url),
     });
     this.statusBar = new StatusBar(renderer);
     this.divider = new DividerHandle(renderer);
+    this.overlay = new ImageOverlay(renderer, {
+      onClose: () => {
+        // Look at the mail again once the picture is gone.
+        const state = this.store.getState();
+        this.render(state, state);
+      },
+    });
     // The account is fixed for the session: set it once, not on every render.
     this.statusBar.setAccount(
       accountLabel(this.core.inbox.email, this.core.inbox.displayName),
@@ -186,6 +196,8 @@ export class App implements TuiHandle {
     });
     shell.add(panes);
     shell.add(this.statusBar.root);
+    // Last and absolutely placed: the picture sits over everything.
+    shell.add(this.overlay.root);
 
     this.preview.root.flexGrow = 1;
     this.preview.root.minWidth = 0;
@@ -279,9 +291,21 @@ export class App implements TuiHandle {
   // ── input ─────────────────────────────────────────────────────────────────
 
   private readonly onKey = (key: KeyEvent): void => {
+    // A picture on show owns the keyboard: zoom, move, close. Anything it does
+    // not use is dropped rather than acting on the mail underneath unseen.
+    if (this.overlay.isOpen) {
+      this.overlay.handleKey(key);
+      return;
+    }
+
     const command = resolveCommand(key);
     if (command) this.run(command);
   };
+
+  /** A picture was clicked: show it alone on the screen. */
+  private showImage(url: string): void {
+    this.overlay.open(url);
+  }
 
   // ── the pane divider ──────────────────────────────────────────────────────
 

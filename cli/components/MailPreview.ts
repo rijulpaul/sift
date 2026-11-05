@@ -1,6 +1,5 @@
 import {
   BoxRenderable,
-  ImageRenderable,
   MarkdownRenderable,
   SyntaxStyle,
   TextRenderable,
@@ -13,7 +12,6 @@ import {
   PREVIEW_EMPTY_MESSAGE,
   bodySegments,
   bodyView,
-  imageCaption,
   labelsLine,
   readActionLabel,
   summaryActionLabel,
@@ -24,6 +22,7 @@ import type { BodyState, SummaryState } from "../state";
 import { attr, theme } from "../theme";
 import type { MailSummary } from "../types";
 import { Button, ACTION_STYLE } from "./Button";
+import { ImageBlock, type ImageLimits } from "./ImageBlock";
 import { Pane, Placeholder, createScrollBox } from "./primitives";
 
 /** Most of the screen a picture may span, however wide the terminal is. */
@@ -51,15 +50,14 @@ export type PreviewView =
 export interface PreviewProps {
   /** The pane was clicked (focus the preview). */
   onActivate: () => void;
+  /** A picture was clicked: show it on its own. */
+  onImage: (url: string) => void;
   onSummary: () => void;
   onMarkRead: () => void;
   onDelete: () => void;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
 }
-
-/** A picture, drawn with its address underneath. */
-type ImageSegment = Extract<BodySegment, { kind: "image" }>;
 
 /** What is drawn. Kept between renders so a stream only changes what changed. */
 /** The look of each style of text. */
@@ -109,12 +107,7 @@ const MARKDOWN_STYLE: Record<
 type BodySegment =
   | { kind: "markdown"; node: MarkdownRenderable; text: string }
   | { kind: "text"; node: TextRenderable; text: string; style: TextStyle }
-  | {
-      kind: "image";
-      node: ImageRenderable;
-      caption: TextRenderable;
-      url: string;
-    };
+  | { kind: "image"; block: ImageBlock; url: string };
 
 /** `Label   value` line in the message header. Wraps long values. */
 class MetaRow {
@@ -172,7 +165,7 @@ export class MailPreview {
   private readonly summaryButton: Button;
   private readonly readButton: Button;
   private readonly deleteButton: Button;
-  /** Holds the body segments: paragraphs of text, and pictures. */
+  /** Holds the body segments: markdown, paragraphs of text, and pictures. */
   private readonly body: BoxRenderable;
   /** Shared by every markdown segment: one style table for the pane. */
   private readonly markdownStyle: SyntaxStyle;
@@ -185,7 +178,7 @@ export class MailPreview {
 
   constructor(
     private readonly ctx: RenderContext,
-    props: PreviewProps,
+    private readonly props: PreviewProps,
   ) {
     this.pane = new Pane(ctx, {
       id: "mail-preview",
@@ -435,14 +428,9 @@ export class MailPreview {
         continue;
       }
 
-      if (
-        have.kind === "image" &&
-        want.kind === "image" &&
-        have.url !== want.url
-      ) {
+      if (have.kind === "image" && want.kind === "image") {
+        have.block.setSource(want.url);
         have.url = want.url;
-        have.caption.content = imageCaption(want.url);
-        have.node.source = want.url; // reloads, and re-fits on load
       }
     }
   }
@@ -480,60 +468,16 @@ export class MailPreview {
       return { kind: "text", node, text: want.text, style: want.style };
     }
 
-    const caption = new TextRenderable(this.ctx, {
-      id: `${id}-caption`,
-      content: imageCaption(want.url),
-      fg: theme.faint,
-      wrapMode: "char",
-      textAlign: "center",
-      width: "100%",
-      flexShrink: 0,
-    });
-    const node = new ImageRenderable(this.ctx, {
-      id: `${id}-image`,
-      source: want.url,
-      fit: "fit",
-      // Kitty or sixel where the terminal has them, blocks everywhere else.
-      protocol: "auto",
-      flexShrink: 0,
-      onLoad: () => {
-        if (segment !== undefined) this.fitImage(segment);
-      },
-      onError: () => {
-        caption.content = imageCaption(want.url, true);
-      },
-    });
-    let segment: ImageSegment | undefined;
-
-    // The caption belongs to the picture: no gap between them, or the two
-    // would look like separate sections.
-    const frame = new BoxRenderable(this.ctx, {
-      id: `${id}-frame`,
-      width: "100%",
-      flexDirection: "column",
-      flexShrink: 0,
-      // Pictures sit in the middle of the pane; the caption fills the width and
-      // centres its own text under them.
-      alignItems: "center",
-    });
-    frame.add(node);
-    frame.add(caption);
-    this.body.add(frame);
-
-    segment = { kind: "image", node, caption, url: want.url };
-    return segment;
+    const block = new ImageBlock(this.ctx, id, want.url, this.props.onImage);
+    this.body.add(block.root);
+    block.setLimits(this.imageLimits());
+    return { kind: "image", block, url: want.url };
   }
 
   private destroySegment(segment: BodySegment): void {
-    if (segment.kind === "image") {
-      const frame = segment.node.parent;
-      if (frame !== null) this.body.remove(frame);
-      frame?.destroyRecursively();
-      return;
-    }
-
-    this.body.remove(segment.node);
-    segment.node.destroyRecursively();
+    const root = segment.kind === "image" ? segment.block.root : segment.node;
+    this.body.remove(root);
+    root.destroyRecursively();
   }
 
   private applyTextStyle(node: TextRenderable, style: TextStyle): void {
@@ -541,19 +485,9 @@ export class MailPreview {
     node.attributes = TEXT_STYLE[style].attributes;
   }
 
-  /** Scale a picture to the pane, keeping its shape. */
-  private fitImage(segment: ImageSegment): void {
-    const width = this.imageMaxWidth();
-    if (width <= 0) return;
-
-    const { width: fitted, height } = segment.node.getFittedSize(
-      width,
-      this.imageMaxRows(),
-    );
-    if (fitted <= 0 || height <= 0) return; // the pixels are not here yet
-
-    segment.node.width = fitted;
-    segment.node.height = height;
+  /** The room a picture may take: a pane's worth, capped for the screen. */
+  private imageLimits(): ImageLimits {
+    return { width: this.imageMaxWidth(), rows: this.imageMaxRows() };
   }
 
   /** Columns a segment may use. */
@@ -594,8 +528,9 @@ export class MailPreview {
 
     this.fittedWidth = width;
     this.fittedRows = rows;
+    const limits = this.imageLimits();
     for (const segment of this.segments) {
-      if (segment.kind === "image") this.fitImage(segment);
+      if (segment.kind === "image") segment.block.setLimits(limits);
     }
   };
 }
