@@ -35,7 +35,7 @@ describe("bodyView — text view", () => {
     expect(bodyView(readyBody(), false, undefined)).toEqual({
       kind: "text",
       text: "The message text",
-      dim: false,
+      format: "markdown",
     });
   });
 
@@ -46,7 +46,7 @@ describe("bodyView — text view", () => {
         false,
         undefined,
       ),
-    ).toEqual({ kind: "text", text: NO_CONTENT_MESSAGE, dim: true });
+    ).toEqual({ kind: "text", text: NO_CONTENT_MESSAGE, format: "note" });
   });
 
   it("ignores any summary while the text view is showing", () => {
@@ -60,7 +60,7 @@ describe("bodyView — before the body arrives", () => {
     expect(bodyView({ status: "loading" }, false, undefined)).toEqual({
       kind: "text",
       text: BODY_PENDING_MESSAGE,
-      dim: true,
+      format: "note",
     });
   });
 
@@ -88,7 +88,7 @@ describe("bodyView — summary view", () => {
   it("shows a pending placeholder before the first chunk arrives", () => {
     expect(
       bodyView(readyBody(), true, { status: "streaming", text: "" }),
-    ).toEqual({ kind: "text", text: SUMMARY_PENDING_MESSAGE, dim: true });
+    ).toEqual({ kind: "text", text: SUMMARY_PENDING_MESSAGE, format: "note" });
   });
 
   it("shows the pending placeholder when no summary exists yet", () => {
@@ -152,13 +152,13 @@ describe("bodyView — summary view", () => {
   it("still says it is summarizing while only JSON punctuation has arrived", () => {
     expect(
       bodyView(readyBody(), true, { status: "streaming", text: '{"title":' }),
-    ).toEqual({ kind: "text", text: SUMMARY_PENDING_MESSAGE, dim: true });
+    ).toEqual({ kind: "text", text: SUMMARY_PENDING_MESSAGE, format: "note" });
   });
 
   it("falls back to the text when the model ignored the shape", () => {
     expect(
       bodyView(readyBody(), true, { status: "done", text: "Just some prose." }),
-    ).toEqual({ kind: "text", text: "Just some prose.", dim: false });
+    ).toEqual({ kind: "text", text: "Just some prose.", format: "markdown" });
   });
 
   it("keeps a partial summary readable when the stream breaks", () => {
@@ -214,9 +214,39 @@ describe("bodyView — summary view", () => {
 });
 
 describe("bodySegments", () => {
-  it("draws a text view as a single piece of text", () => {
-    expect(bodySegments({ kind: "text", text: "Hello", dim: true })).toEqual([
-      { kind: "text", text: "Hello", style: "note" },
+  it("draws a note as a single piece of text", () => {
+    expect(
+      bodySegments({ kind: "text", text: "Loading…", format: "note" }),
+    ).toEqual([{ kind: "text", text: "Loading…", style: "note" }]);
+  });
+
+  it("hands the message's own markdown to the markdown renderer", () => {
+    const view = bodyView(readyBody(), false, undefined);
+
+    expect(bodySegments(view)).toEqual([
+      { kind: "markdown", text: "The message text" },
+    ]);
+  });
+
+  it("draws the pictures in the message as pictures, between the prose", () => {
+    // The message is markdown, so a picture standing on its own line is a
+    // picture to draw — the same as one in a summary.
+    const view = bodyView(
+      readyBody({
+        text: [
+          "Intro line.",
+          "![A chart](https://cdn.example.com/a.png)",
+          "Outro line.",
+        ].join("\n\n"),
+      }),
+      false,
+      undefined,
+    );
+
+    expect(bodySegments(view)).toEqual([
+      { kind: "markdown", text: "Intro line." },
+      { kind: "image", url: "https://cdn.example.com/a.png" },
+      { kind: "markdown", text: "Outro line." },
     ]);
   });
 

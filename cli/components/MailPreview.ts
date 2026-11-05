@@ -1,6 +1,8 @@
 import {
   BoxRenderable,
   ImageRenderable,
+  MarkdownRenderable,
+  SyntaxStyle,
   TextRenderable,
   type RenderContext,
   type ScrollBoxRenderable,
@@ -67,7 +69,45 @@ const TEXT_STYLE: Record<TextStyle, { fg: string; attributes: number }> = {
   note: { fg: theme.muted, attributes: attr.none },
 };
 
+/**
+ * How the message's own markdown is drawn: the same monotone palette, with
+ * weight and colour doing the work instead of syntax colours. `conceal` hides
+ * the markers (`#`, `**`, `[]()`), so the reader sees prose, not source.
+ */
+const MARKDOWN_STYLE: Record<
+  string,
+  {
+    fg?: string;
+    bg?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    dim?: boolean;
+  }
+> = {
+  default: { fg: theme.text },
+  conceal: { fg: theme.faint },
+  // The highlighter scopes headings per level (`markup.heading.1`…`.6`), so
+  // every level is styled rather than just the first.
+  ...Object.fromEntries(
+    [1, 2, 3, 4, 5, 6].map((level) => [
+      `markup.heading.${level}`,
+      { fg: theme.strong, bold: true },
+    ]),
+  ),
+  "markup.strong": { fg: theme.strong, bold: true },
+  "markup.italic": { fg: theme.text, italic: true },
+  "markup.strikethrough": { fg: theme.muted },
+  "markup.raw": { fg: theme.text, bg: theme.raised },
+  "markup.quote": { fg: theme.muted, italic: true },
+  "markup.list": { fg: theme.strong },
+  "markup.link": { fg: theme.muted },
+  "markup.link.label": { fg: theme.text, underline: true },
+  "markup.link.url": { fg: theme.faint, underline: true },
+};
+
 type BodySegment =
+  | { kind: "markdown"; node: MarkdownRenderable; text: string }
   | { kind: "text"; node: TextRenderable; text: string; style: TextStyle }
   | {
       kind: "image";
@@ -134,6 +174,8 @@ export class MailPreview {
   private readonly deleteButton: Button;
   /** Holds the body segments: paragraphs of text, and pictures. */
   private readonly body: BoxRenderable;
+  /** Shared by every markdown segment: one style table for the pane. */
+  private readonly markdownStyle: SyntaxStyle;
   private segments: BodySegment[] = [];
   private segmentId = 0;
   /** Room the pictures were last fitted into, so a resize can re-fit them. */
@@ -150,6 +192,11 @@ export class MailPreview {
       title: "Message",
       onActivate: props.onActivate,
     });
+
+    this.markdownStyle = SyntaxStyle.fromStyles(
+      MARKDOWN_STYLE,
+      ctx.nativeScene,
+    );
 
     this.scroll = createScrollBox(ctx, "mail-preview-scroll");
     this.scroll.contentOptions = {
@@ -368,6 +415,14 @@ export class MailPreview {
         return;
       }
 
+      if (have.kind === "markdown" && want.kind === "markdown") {
+        if (have.text !== want.text) {
+          have.text = want.text;
+          have.node.content = want.text; // re-parsed, and re-wrapped to the pane
+        }
+        continue;
+      }
+
       if (have.kind === "text" && want.kind === "text") {
         if (have.text !== want.text) {
           have.text = want.text;
@@ -394,6 +449,21 @@ export class MailPreview {
 
   private createSegment(want: BodySegmentSpec): BodySegment {
     const id = `mail-preview-segment-${this.segmentId++}`;
+
+    if (want.kind === "markdown") {
+      const node = new MarkdownRenderable(this.ctx, {
+        id,
+        content: want.text,
+        syntaxStyle: this.markdownStyle,
+        fg: theme.text,
+        // Markers are hidden: the reader gets the writing, not the source.
+        conceal: true,
+        width: "100%",
+        flexShrink: 0,
+      });
+      this.body.add(node);
+      return { kind: "markdown", node, text: want.text };
+    }
 
     if (want.kind === "text") {
       const node = new TextRenderable(this.ctx, {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isUnread,
-  plainTextOf,
+  markdownOf,
   toMailBody,
   toMailSummary,
   type CoreListItem,
@@ -102,13 +102,15 @@ describe("toMailBody", () => {
   });
 });
 
-describe("plainTextOf", () => {
-  it("prefers the plain text when there is some", () => {
-    expect(plainTextOf(body({ text: "  Plain  " }))).toBe("Plain");
+describe("markdownOf", () => {
+  it("prefers the message's own markdown when there is some", () => {
+    expect(markdownOf(body({ text: "  ## Title\n\nBody  " }))).toBe(
+      "## Title\n\nBody",
+    );
   });
 
-  it("falls back to the processed markdown, with the real links", () => {
-    const text = plainTextOf(
+  it("falls back to the processed body, with the real links", () => {
+    const text = markdownOf(
       body({
         content: {
           content:
@@ -133,7 +135,7 @@ describe("plainTextOf", () => {
 
   it("names images that have no alt text", () => {
     expect(
-      plainTextOf(
+      markdownOf(
         body({
           content: {
             content: "![](LINK_0)",
@@ -148,7 +150,7 @@ describe("plainTextOf", () => {
 
   it("leaves a placeholder it cannot resolve", () => {
     expect(
-      plainTextOf(
+      markdownOf(
         body({
           content: { content: "See [it](LINK_9)", links: {} },
         }),
@@ -157,6 +159,6 @@ describe("plainTextOf", () => {
   });
 
   it("is empty when there is no text and no content", () => {
-    expect(plainTextOf(body())).toBe("");
+    expect(markdownOf(body())).toBe("");
   });
 });

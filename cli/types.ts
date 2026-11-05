@@ -19,7 +19,7 @@ export interface MailSummary {
 
 /** A message's body, fetched when the message is opened. */
 export interface MailBody {
-  /** Plain text of the message as received. */
+  /** The message as markdown, links unmasked. What the preview renders. */
   text: string;
   /** Processed body (markdown with masked links). Input to `core.summarize()`. */
   content: MaskedContent;

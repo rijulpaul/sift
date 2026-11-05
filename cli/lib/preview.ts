@@ -3,7 +3,8 @@
  * No renderer imports, so these are unit-tested without a terminal.
  */
 import type { BodyState, SummaryState } from "../state";
-import { plainTextOf } from "./mail";
+import { markdownOf } from "./mail";
+import { markdownSegments } from "./markdown";
 import { isEmptySummary, parseSummary, type SummaryBlock } from "./summary";
 
 export const PREVIEW_EMPTY_MESSAGE = "Select a message to read it.";
@@ -11,9 +12,16 @@ export const BODY_PENDING_MESSAGE = "Loading…";
 export const SUMMARY_PENDING_MESSAGE = "Summarizing…";
 export const NO_CONTENT_MESSAGE = "(no content)";
 
+/**
+ * How a piece of running text is drawn: the message's own markdown, or a plain
+ * dim note (a loading / empty / failed state), which must never be parsed as
+ * markdown — its punctuation is meant literally.
+ */
+export type TextFormat = "markdown" | "note";
+
 /** What the pane should draw: running text, or a summary with pictures in it. */
 export type BodyView =
-  | { kind: "text"; text: string; dim: boolean }
+  | { kind: "text"; text: string; format: TextFormat }
   | {
       kind: "blocks";
       title: string;
@@ -30,10 +38,10 @@ const failureText = (what: string, reason: string, retry: string): string =>
 const looksLikeJson = (text: string): boolean =>
   /^\s*(?:```[a-zA-Z]*\s*)?\{/.test(text);
 
-const asText = (text: string, dim: boolean): BodyView => ({
+const asText = (text: string, format: TextFormat): BodyView => ({
   kind: "text",
   text,
-  dim,
+  format,
 });
 
 /** `text`, with the interruption note under it when there is one. */
@@ -51,7 +59,7 @@ export function bodyView(
   summary: SummaryState | undefined,
 ): BodyView {
   if (body === undefined || body.status === "loading") {
-    return asText(BODY_PENDING_MESSAGE, true);
+    return asText(BODY_PENDING_MESSAGE, "note");
   }
 
   if (body.status === "error") {
@@ -61,20 +69,22 @@ export function bodyView(
         body.message,
         "Press enter to try again.",
       ),
-      true,
+      "note",
     );
   }
 
   if (!showSummary) {
-    const text = plainTextOf(body.body);
-    return text === "" ? asText(NO_CONTENT_MESSAGE, true) : asText(text, false);
+    const text = markdownOf(body.body);
+    return text === ""
+      ? asText(NO_CONTENT_MESSAGE, "note")
+      : asText(text, "markdown");
   }
 
   if (
     summary === undefined ||
     (summary.status === "streaming" && summary.text === "")
   ) {
-    return asText(SUMMARY_PENDING_MESSAGE, true);
+    return asText(SUMMARY_PENDING_MESSAGE, "note");
   }
 
   const note =
@@ -95,16 +105,17 @@ export function bodyView(
           summary.error ?? "Unknown error.",
           "Press s to try again.",
         ),
-        true,
+        "note",
       );
     }
 
     // A document that has only just started has nothing to show yet. An answer
-    // that is not that document is shown as the text it is.
+    // that is not that document is shown as the text it is — the model's own
+    // prose, which may well be markdown.
     if (looksLikeJson(summary.text) && summary.status === "streaming") {
-      return asText(SUMMARY_PENDING_MESSAGE, true);
+      return asText(SUMMARY_PENDING_MESSAGE, "note");
     }
-    return asText(withNote(raw, note), false);
+    return asText(withNote(raw, note), "markdown");
   }
 
   // A parsed summary is drawn as its parts, so the title can be emphasised and
@@ -122,6 +133,8 @@ export function bodyView(
 export type TextStyle = "title" | "body" | "note";
 
 export type BodySegmentSpec =
+  /** The message itself: markdown, drawn by the markdown renderer. */
+  | { kind: "markdown"; text: string }
   | { kind: "text"; text: string; style: TextStyle }
   | { kind: "image"; url: string };
 
@@ -132,9 +145,12 @@ export type BodySegmentSpec =
  */
 export function bodySegments(view: BodyView): BodySegmentSpec[] {
   if (view.kind === "text") {
-    return [
-      { kind: "text", text: view.text, style: view.dim ? "note" : "body" },
-    ];
+    if (view.format !== "markdown") {
+      return [{ kind: "text", text: view.text, style: "note" }];
+    }
+    // The message is markdown, except for the pictures that stand on their own
+    // line: those are drawn as pictures, the same as a summary's.
+    return markdownSegments(view.text);
   }
 
   const segments: BodySegmentSpec[] = [];

@@ -40,16 +40,15 @@ export function toMailBody(detail: CoreMessageDetail): MailBody {
 }
 
 /**
- * The message as readable text. Uses the plain text when there is one, and
- * otherwise turns the processed markdown back into text, resolving the masked
- * link placeholders (`[text](LINK_3)`) to the real URLs.
+ * The message as the markdown the preview renders. The core already hands back
+ * markdown (the newsletter is converted once, for both the reader and the
+ * agent); when only the processed body is available, its masked placeholders
+ * (`[text](LINK_3)`) are resolved first so the links are real.
  */
-export function plainTextOf(body: MailBody): string {
+export function markdownOf(body: MailBody): string {
   const text = body.text.trim();
   if (text !== "") return text;
 
-  // The processed body carries placeholders, not addresses; resolve them so the
-  // preview shows the real links.
   return resolveLinks(body.content.content, body.content.links)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
