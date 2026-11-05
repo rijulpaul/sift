@@ -62,10 +62,41 @@ list's border and `▌` on the preview's — so it straddles the line instead of
 sitting on one side of it. It means the line can be moved: drag it, or press `<`
 / `>` to nudge it a few columns at a time.
 
+**Looking at a picture.** Click any picture — in the summary or in the message,
+they behave the same — and it opens as large as the screen allows. The mail
+behind is veiled, not hidden: a translucent layer of the background colour lets
+the terminal blend it with what is underneath, so the picture stands out while
+the letter stays readable. While it is open the keyboard belongs to it:
+
+| Input                   | Effect                              |
+| ----------------------- | ----------------------------------- |
+| `=` (`+`) / `-`         | zoom in / out (50%–600%, 50% steps) |
+| `ctrl` + wheel          | the same                            |
+| `0`                     | back to whole picture, centred      |
+| `h` `j` `k` `l`, arrows | move up / down / sideways           |
+| wheel                   | move up and down a row at a time    |
+| `shift` + wheel         | move sideways a couple of columns   |
+| `esc`, `q`, or the `×`  | close and go back to the mail       |
+
+The `×` is a five-by-three button in the very top-right corner of the screen — a
+space either side of the cross, an outline in the focused-border colour, the
+theme's own background, and a white cross — so it is always in the same place
+and never over the picture. Nothing behind the overlay takes clicks or keys
+while it is open.
+
 ## What the preview shows
 
 - Subject, sender, date, and the message's labels.
-- The message text by default. With _summary_ on, the streamed summary instead.
+- The message by default, **rendered from its markdown** (headings, emphasis, lists,
+  quotes, code and links), not as its source. With _summary_ on, the streamed
+  summary instead. Loading, empty and error notes are drawn as plain text, so
+  their punctuation is never read as markdown.
+- **Pictures**, in the message and in the summary alike: a picture standing on its
+  own line in the markdown is drawn by `ImageBlock` — scaled to fit, at most three
+  quarters of the screen wide and half its height, centred, captioned with its
+  address, and saying so when it cannot be loaded. Pictures inside a sentence stay
+  in the prose. Clicking one opens `ImageOverlay`, which draws just that picture,
+  zoomable and pannable, until it is closed.
 - A failed summary says why and keeps any partial text. Press `s` to retry.
 - A failed mark-as-read or delete shows a notice in the status bar and puts the mail back the way it was.
 
@@ -97,6 +128,7 @@ the TUI's view model (`MailSummary`, metadata only) and a fetched message onto
 | ------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `listMessages(request)`                           | the list (streamed rows, no bodies), `r`, the unread filter (`labels: ["unread"]`) |
 | `getMessage(id)`                                  | the body of the message being read (fetched on open, then cached)                  |
+|                                                   | its `text` is markdown, drawn by OpenTUI's markdown renderer                       |
 | `summarize(content)`                              | summaries (streamed)                                                               |
 | `setMessageLabel(id, { removeLabels: "unread" })` | mark as read                                                                       |
 | `setMessageLabel(id, { addLabels: "unread" })`    | mark as unread                                                                     |
@@ -114,12 +146,15 @@ cli/
   layout.ts         terminal width → split | stacked (pure)
   theme.ts          the monotone palette
   types.ts          MailSummary (view model), TuiOptions, TuiHandle
-  lib/mail.ts       core message → MailSummary, plainTextOf (pure)
+  lib/mail.ts       core message → MailSummary, markdownOf (pure)
+  lib/markdown.ts   markdown → prose and picture blocks (pure)
+  lib/zoom.ts       overlay zoom, pan and placement (pure)
   lib/preview.ts    what the preview shows (pure)
   lib/format.ts     sender and time formatting (pure)
   lib/fit.ts        cell-aware truncation (pure)
   components/       Pane, MailList, MailListItem, MailPreview, StatusBar,
-                    DividerHandle, Button, EllipsisText, primitives
+                    ImageBlock, ImageOverlay, DividerHandle, Button,
+                    EllipsisText, primitives
   mock.ts, demo.ts  a mock SiftCore and a runnable demo
 ```
 
