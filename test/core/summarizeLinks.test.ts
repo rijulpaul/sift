@@ -24,8 +24,6 @@ import type { Inbox } from "../../core/mail";
 import type { MaskedContent } from "../../core/process";
 
 const config = {
-  tui: true,
-  webui: false,
   email: "news@example.com",
   displayName: undefined,
   createEmail: false,

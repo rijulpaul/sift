@@ -1,14 +1,4 @@
 {
-  "tui": {
-    "flag": "--tui",
-    "type": "boolean",
-    "description": "Enable the terminal user interface"
-  },
-  "webui": {
-    "flag": "--webui",
-    "type": "boolean",
-    "description": "Enable the web user interface"
-  },
   "email": {
     "flag": "--email",
     "type": "string",

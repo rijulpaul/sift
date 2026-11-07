@@ -110,8 +110,6 @@ export function createMockMessages(now = new Date()): MockMessage[] {
 }
 
 const DEFAULT_CONFIG: Config = {
-  tui: true,
-  webui: false,
   email: "news@example.com",
   displayName: undefined,
   createEmail: false,

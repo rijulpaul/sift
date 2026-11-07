@@ -37,8 +37,6 @@ const written = () => {
 
 /** A defaults.json containing every known setting. */
 const completeRaw = {
-  tui: true,
-  webui: false,
   email: "news@example.com",
   create_email: false,
   mark_as_read: true,
@@ -125,7 +123,7 @@ describe("assertConfigFileComplete", () => {
 
     const err = caught(assertConfigFileComplete);
 
-    expect(err.message).toMatch(/is incomplete, missing: tui, webui/);
+    expect(err.message).toMatch(/is incomplete, missing: email, create_email/);
   });
 
   it("accepts a complete file, including keys whose value is null", () => {

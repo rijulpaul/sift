@@ -80,13 +80,4 @@ if (config.email !== core.inbox.email) {
   persistEmail(core.inbox.email);
 }
 
-if (config.tui) {
-  await startTui(core, { onExit: () => process.exit(0) });
-}
-if (config.webui) {
-  const vite = Bun.spawn({
-    cmd: ["bun", "run", "--cwd", "web", "dev"],
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-}
+await startTui(core, { onExit: () => process.exit(0) });

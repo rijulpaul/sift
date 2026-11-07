@@ -102,8 +102,6 @@ export const resolveConfig = (overrides: ConfigOverrides = {}): Config => {
   }
 
   return {
-    tui: Boolean(raw.tui),
-    webui: Boolean(raw.webui),
     email: asString(raw.email),
     displayName: undefined,
     createEmail: Boolean(raw.create_email),
@@ -144,12 +142,4 @@ const checkMissingFields = (config: Config) => {
 export const validateConfig = (config: Config) => {
   assertConfigFileComplete();
   checkMissingFields(config);
-
-  //atleast one UI type must be selected
-  if (!config.tui && !config.webui) {
-    console.error(
-      `Warning: Both TUI and WebUI are disabled. Nothing will be displayed.
-{tui: ${config.tui}, webui: ${config.webui}}`,
-    );
-  }
 };
