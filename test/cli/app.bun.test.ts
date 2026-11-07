@@ -1088,9 +1088,36 @@ describe("TUI — the picture overlay", () => {
     expect(screen).toContain("Summarize");
     expect(screen).toContain("After.");
     expect(screen).toContain("image: "); // the pane's own caption
-    expect(screen).toContain("unread · 1/1"); // and the footer, behind the hint
     // …and the picture is drawn over it.
     expect(/[▀▄█]{5,}/.test(screen)).toBe(true);
+  });
+
+  it("draws the hint's keys and percentage in the strong colour, bold", async () => {
+    const { t } = await openPicture();
+    const screen = await until(t, (f) => f.includes("esc close"));
+
+    const row = screen.split("\n").findIndex((l) => l.includes("esc close"));
+    const spans = t.captureSpans() as unknown as {
+      lines: Array<{
+        spans: Array<{
+          text: string;
+          attributes: number;
+          fg?: { toInts(): number[] };
+        }>;
+      }>;
+    };
+    const cells = spans.lines[row]!.spans;
+    const strong = hexToChannel(theme.strong);
+
+    // The number and the keys stand out; the words between them do not.
+    for (const text of ["100%", "=/-", "ctrl+wheel", "esc"]) {
+      const span = cells.find((cell) => cell.text.includes(text));
+      expect(span?.attributes).toBe(1); // 1 is bold in OpenTUI
+      expect(span?.fg?.toInts()[0]).toBe(strong);
+    }
+    const word = cells.find((cell) => cell.text.includes("zoom"));
+    expect(word?.attributes).toBe(0);
+    expect(word?.fg?.toInts()[0]).toBe(hexToChannel(theme.muted));
   });
 
   it("veils the mail with a translucent layer instead of covering it", async () => {

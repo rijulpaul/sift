@@ -3,6 +3,9 @@ import {
   ImageRenderable,
   RGBA,
   TextRenderable,
+  bold,
+  fg,
+  t,
   type KeyEvent,
   type MouseEvent,
   type RenderContext,
@@ -30,11 +33,17 @@ const CLOSE_HEIGHT = 3;
 const CLOSE_WIDTH = 5;
 
 /**
+ * A key or a number in the hint line: the strongest colour, in bold, so the
+ * gestures stand out from the words that explain them.
+ */
+const strong = (text: string) => fg(theme.strong)(bold(text));
+
+/**
  * The veil over the mail: the screen's own colour, half painted. The terminal
  * blends it with what is underneath, so the mail shows through — dimmed — and
  * the picture stands out. Text keeps its own colour, so nothing is hidden.
  */
-const SCRIM = RGBA.fromValues(11 / 255, 11 / 255, 11 / 255, 0.6);
+const SCRIM = RGBA.fromValues(11 / 255, 11 / 255, 11 / 255, 0.8);
 
 /** The terminal's size; a render context is the screen unless told otherwise. */
 const screenWidth = (ctx: RenderContext): number =>
@@ -63,6 +72,7 @@ export class ImageOverlay {
   private readonly window: BoxRenderable;
   private readonly image: ImageRenderable;
   private readonly closeBox: BoxRenderable;
+  private readonly hintBar: BoxRenderable;
   private readonly hint: TextRenderable;
 
   private url: string | null = null;
@@ -137,24 +147,31 @@ export class ImageOverlay {
       }),
     );
 
-    // Full width and painted, so the footer behind it does not read through it.
-    this.hint = new TextRenderable(ctx, {
+    // A painted strip across the bottom: the footer behind it would otherwise
+    // read through the gaps between the words.
+    this.hintBar = new BoxRenderable(ctx, {
       id: "image-overlay-hint",
-      content: "",
-      fg: theme.muted,
-      bg: theme.bg,
-      wrapMode: "none",
-      textAlign: "center",
-      width: "100%",
       position: "absolute",
       left: 0,
       top: 0,
+      width: "100%",
+      height: 1,
+      backgroundColor: theme.bg,
     });
+    this.hint = new TextRenderable(ctx, {
+      id: "image-overlay-hint-text",
+      content: "",
+      fg: theme.muted,
+      wrapMode: "none",
+      textAlign: "center",
+      width: "100%",
+    });
+    this.hintBar.add(this.hint);
 
     this.window.add(this.image);
     this.root.add(this.window);
     this.root.add(this.closeBox);
-    this.root.add(this.hint);
+    this.root.add(this.hintBar);
   }
 
   /** True while a picture is being looked at: the app sends it the keys. */
@@ -265,8 +282,8 @@ export class ImageOverlay {
     this.closeBox.left = Math.max(0, width - CLOSE_WIDTH);
     this.closeBox.top = 0;
 
-    this.hint.content = `${zoomLabel(this.zoom)} · =/- or ctrl+wheel zoom · hjkl/arrows, shift+wheel move · esc close`;
-    this.hint.top = height - HINT_ROWS;
+    this.hint.content = t`${strong(zoomLabel(this.zoom))} · ${strong("=/-")} or ${strong("ctrl+wheel")} zoom · ${strong("h/j/k/l")} or ${strong("←/↓/↑/→")} or ${strong("wheel/shift+wheel")} move · ${strong("esc")} close`;
+    this.hintBar.top = height - HINT_ROWS;
   }
 
   // ── internals ─────────────────────────────────────────────────────────────
