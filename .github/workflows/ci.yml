@@ -32,6 +32,7 @@ jobs:
 
       - run: bun run lint
       - run: bun run test
+      - run: bun run test:tui
       - run: bun run format:write
 
       - name: Commit formatted files
