@@ -6,11 +6,15 @@
 // OpenTUI's native renderer only loads under Bun, so this file runs with
 // `bun run test:tui` (vitest skips it; see vitest.config.ts).
 
-import { createTestRenderer } from "@opentui/core/testing";
+import {
+  createTestRenderer,
+  setRendererCapabilities,
+} from "@opentui/core/testing";
 import { afterEach, describe, expect, it } from "bun:test";
 import { mountTui } from "../../cli";
 import { theme } from "../../cli/theme";
 import { DIVIDER_STEP } from "../../cli/layout";
+import { textWidth } from "../../cli/lib/fit";
 import {
   createMockCore,
   createMockMessages,
@@ -32,6 +36,11 @@ async function start(
 ) {
   const t = await createTestRenderer(size);
   open.push(t);
+  // Pin the terminal's capabilities instead of letting them be detected: the
+  // markdown renderer draws a link as `label (address)` on a terminal without
+  // hyperlink support, and hides the address behind an OSC 8 link on one with
+  // it. Which of the two a test sees would otherwise depend on the machine.
+  setRendererCapabilities(t.renderer, { hyperlinks: false });
 
   const { core, calls } = createMockCore({
     messages: createMockMessages(NOW),
@@ -112,19 +121,21 @@ async function startAll(
 /**
  * Click the first picture drawn on screen. Pictures are runs of block
  * characters; the scrollbar is a single `█`, so a run of five is a picture.
+ *
+ * A picture appears only once its pixels have decoded, which is after the
+ * prose around it, so this waits for one rather than looking just once.
  */
 async function clickPicture(t: Harness) {
-  await t.flush();
-  const lines = t.captureCharFrame().split("\n");
+  const screen = await until(t, (f) => /[▀▄█]{5,}/.test(f), 5000);
+
+  const lines = screen.split("\n");
   for (let y = 0; y < lines.length; y++) {
     const match = /[▀▄█]{5,}/.exec(lines[y]!);
-    if (match) {
-      await t.mockMouse.click(match.index + 2, y);
-      await t.flush();
-      return;
-    }
+    if (match === null) continue;
+    await t.mockMouse.click(match.index + 2, y);
+    await t.flush();
+    return;
   }
-  throw new Error("no picture on screen");
 }
 
 /**
@@ -147,7 +158,8 @@ function pictureCells(t: Harness): string[] {
 
   const cells = spans.lines[y]!.spans.flatMap((span) => {
     const colour = `${span.fg?.r.toFixed(2)}/${span.fg?.g.toFixed(2)}`;
-    return Array.from({ length: [...span.text].length }, () => colour);
+    // A span's characters are the cells it covers, wide ones included.
+    return Array.from({ length: textWidth(span.text) }, () => colour);
   });
 
   return cells.slice(start, start + width);
@@ -166,9 +178,9 @@ function bgAt(t: Harness, x: number, y: number): number[] {
 
   let column = 0;
   for (const span of spans.lines[y]!.spans) {
-    const length = [...span.text].length;
-    if (x < column + length) return span.bg?.toInts() ?? [0, 0, 0, 0];
-    column += length;
+    const width = textWidth(span.text);
+    if (x < column + width) return span.bg?.toInts() ?? [0, 0, 0, 0];
+    column += width;
   }
   return [0, 0, 0, 0];
 }
