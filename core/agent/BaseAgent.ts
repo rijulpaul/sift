@@ -4,7 +4,7 @@ import { logger } from "../logger";
 
 const log = logger.child({ module: "agent" });
 
-export abstract class BaseAgent<TInput, TOutput = string> {
+export abstract class BaseAgent<TInput> {
   protected readonly name: string;
 
   protected agent!: ReturnType<typeof createAgent>;

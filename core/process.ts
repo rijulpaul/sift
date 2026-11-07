@@ -170,7 +170,10 @@ function maskLinks(html: string): MaskedContent {
   };
 }
 
-export function processNewsletter(newsletter_html: string, mask_links?: boolean) {
+export function processNewsletter(
+  newsletter_html: string,
+  mask_links?: boolean,
+) {
   log.debug({ chars: newsletter_html.length }, "processing newsletter");
 
   newsletter_html = cleanHtml(newsletter_html);
@@ -193,14 +196,11 @@ export function processNewsletter(newsletter_html: string, mask_links?: boolean)
 
     return masked_newsletter;
   } else {
-    const markdown = htmlToMarkdown(newsletter_html)
-    log.info(
-      { chars: markdown.length },
-      "newsletter processed to markdown",
-    );
+    const markdown = htmlToMarkdown(newsletter_html);
+    log.info({ chars: markdown.length }, "newsletter processed to markdown");
     return {
       content: markdown,
-      links: {}
-    }
+      links: {},
+    };
   }
 }

@@ -63,10 +63,7 @@ export type context = {
   toolConfig: ToolConfig;
 };
 
-export class NewsletterSummarizationAgent extends BaseAgent<
-  MaskedContent,
-  string | undefined
-> {
+export class NewsletterSummarizationAgent extends BaseAgent<MaskedContent> {
   private readonly toolConfig: ToolConfig;
 
   /**

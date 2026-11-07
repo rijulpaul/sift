@@ -4,7 +4,7 @@ import { BaseAgent } from "../BaseAgent";
 import { getModel, type ModelInfo } from "../model";
 import { describeImagePrompt } from "./prompt";
 
-export class DescribeImageAgent extends BaseAgent<string, string | undefined> {
+export class DescribeImageAgent extends BaseAgent<string> {
   /**
    * Build the agent. Async because `langchain` and the provider SDK are
    * imported here rather than at module load, which keeps them off the
