@@ -60,51 +60,51 @@ export class Inbox {
     // Given an email
     // 1. check if the email id exists
     // 2. get inboxId if yes
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        log.error({ email }, "invalid email address");
-        throw new Error(`Invalid email: ${email}`);
-      }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      log.error({ email }, "invalid email address");
+      throw new Error(`Invalid email: ${email}`);
+    }
 
-      log.debug({ email: email }, "searching for existing inbox");
+    log.debug({ email: email }, "searching for existing inbox");
 
-      let pages = 0;
-      do {
-        const res = await handleApiCall(
-          "search inboxes",
-          { email, page: pages + 1 },
-          () =>
-            this.client.inboxes.list({
-              pageToken: next_page_token,
-            }),
-        );
-        next_page_token = res.nextPageToken || undefined;
+    let pages = 0;
+    do {
+      const res = await handleApiCall(
+        "search inboxes",
+        { email, page: pages + 1 },
+        () =>
+          this.client.inboxes.list({
+            pageToken: next_page_token,
+          }),
+      );
+      next_page_token = res.nextPageToken || undefined;
 
-        log.debug(
-          { page: ++pages, results: res.inboxes.length },
-          "searched inbox page",
-        );
+      log.debug(
+        { page: ++pages, results: res.inboxes.length },
+        "searched inbox page",
+      );
 
-        for (const i of res.inboxes) {
-          if (i.email == email) {
-            inboxId = i.inboxId;
-            email = i.email;
-            displayName = i.displayName || undefined;
-            log.info({ inboxId: inboxId }, "existing inbox found");
-          }
+      for (const i of res.inboxes) {
+        if (i.email == email) {
+          inboxId = i.inboxId;
+          email = i.email;
+          displayName = i.displayName || undefined;
+          log.info({ inboxId: inboxId }, "existing inbox found");
         }
-      } while (next_page_token && !inboxId);
+      }
+    } while (next_page_token && !inboxId);
 
     // create a new email and get inboxId (random if email not provided)
     if (!inboxId) {
-        log.error(
-          { email: email },
-          "inbox not found and createEmail is disabled",
-        );
-        throw new Error(
-          `Email ${email} not found and createEmail is set to false` +
-            " Set createEmail to true in config or add a valid email id",
-        );
+      log.error(
+        { email: email },
+        "inbox not found and createEmail is disabled",
+      );
+      throw new Error(
+        `Email ${email} not found and createEmail is set to false` +
+          " Set createEmail to true in config or add a valid email id",
+      );
     }
 
     return new Inbox({ inboxId, email, displayName });

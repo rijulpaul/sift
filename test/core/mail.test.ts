@@ -119,9 +119,7 @@ describe("Mail.init — inbox discovery/creation", () => {
     });
 
     // Act
-    const inbox = await Inbox.init(
-       "news@example.com"
-    );
+    const inbox = await Inbox.init("news@example.com");
 
     // Assert — the returned Inbox must be bound to the FOUND inbox.
     expect(inbox.inbox_id).toBe("inbox-found");
@@ -142,9 +140,7 @@ describe("Mail.init — inbox discovery/creation", () => {
       });
 
     // Act
-    const inbox = await Inbox.init(
-       "news@example.com"
-    );
+    const inbox = await Inbox.init("news@example.com");
 
     // Assert — both pages were searched, the second one passing the token...
     expect(mocks.listInboxes).toHaveBeenCalledTimes(2);
@@ -156,9 +152,7 @@ describe("Mail.init — inbox discovery/creation", () => {
   });
 
   it("rejects an invalid email before calling the API", async () => {
-    const err = await catchError(
-      Inbox.init("not-an-email"),
-    );
+    const err = await catchError(Inbox.init("not-an-email"));
 
     expect(err.message).toBe("Invalid email: not-an-email");
     expect(mocks.listInboxes).not.toHaveBeenCalled();
@@ -170,9 +164,7 @@ describe("Mail.init — inbox discovery/creation", () => {
     // so it must keep its original message.
     mocks.listInboxes.mockResolvedValue({ inboxes: [] });
 
-    const err = await catchError(
-      Inbox.init("news@example.com"),
-    );
+    const err = await catchError(Inbox.init("news@example.com"));
 
     expect(err.message).toMatch(/createEmail is set to false/);
     expect(err.message).not.toMatch(/failed:/);
@@ -188,9 +180,7 @@ describe("Mail.init — API failures", () => {
     const boom = new Error("search unavailable");
     mocks.listInboxes.mockRejectedValueOnce(boom);
 
-    const err = await catchError(
-      Inbox.init("news@example.com"),
-    );
+    const err = await catchError(Inbox.init("news@example.com"));
 
     expect(err.message).toBe("search inboxes failed: search unavailable");
     expect(err.cause).toBe(boom);
