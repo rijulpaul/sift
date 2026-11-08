@@ -29,6 +29,11 @@
     "type": "string",
     "description": "LLM model name"
   },
+  "llm_base_url": {
+    "flag": "--llm-base-url",
+    "type": "string",
+    "description": "LLM Custom Endpoint URL (OpenAI compatible)"
+  },
   "process_images": {
     "flag": "--process-images",
     "type": "boolean",
@@ -43,5 +48,10 @@
     "flag": "--vlm-name",
     "type": "string",
     "description": "Vision-language model name"
+  },
+  "vlm_base_url": {
+    "flag": "--vlm-base-url",
+    "type": "string",
+    "description": "Vision-language model Custom Endpoint URL (OpenAI compatible)"
   }
 }

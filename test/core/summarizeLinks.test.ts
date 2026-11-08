@@ -31,9 +31,11 @@ const config = {
   summarize: true,
   llmProvider: "openrouter",
   llmName: "openai/gpt-oss-20b",
+  llmBaseUrl: undefined,
   processImages: false,
   vlmProvider: undefined,
   vlmName: undefined,
+  vlmBaseUrl: undefined,
 } satisfies Config;
 
 const newsletter: MaskedContent = {

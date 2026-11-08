@@ -50,6 +50,7 @@ export const toolConfigSchema = z
 export interface ToolConfig {
   vlmProvider: ModelProvider | undefined;
   vlmName: string | undefined;
+  baseUrl?: string;
   processImages: boolean;
 }
 

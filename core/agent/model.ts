@@ -16,7 +16,28 @@ export const modelProviderSchema = z.enum([
 export interface ModelInfo {
   model: string;
   modelProvider: ModelProvider;
+  /** Where an OpenAI-compatible endpoint lives; unset for the hosted APIs. */
+  baseUrl?: string;
 }
+
+/**
+ * The key to hand the OpenAI client.
+ *
+ * The hosted API is useless without one, so a missing key is an error the
+ * reader can act on. A self-hosted OpenAI-compatible endpoint often has no key
+ * at all, so there the key is set as placeholder if empty.
+ */
+const openAiApiKey = (baseUrl: string | undefined): string => {
+  const configured = process.env.OPENAI_API_KEY?.trim();
+  if (configured) return configured;
+
+  if (baseUrl !== undefined) return configured ?? "placeholder";
+
+  throw new Error(
+    "OPENAI_API_KEY is not set. Set it, or point sift at a custom " +
+      "OpenAI-compatible endpoint with llm_base_url / vlm_base_url.",
+  );
+};
 
 /**
  * Instantiate the configured provider's chat model.
@@ -42,9 +63,14 @@ export async function getModel(modelInfo: ModelInfo): Promise<BaseChatModel> {
     }
 
     case "openai": {
+      // Resolved before the import: a missing key is a configuration problem,
+      // and there is no reason to load the SDK to report it.
+      const apiKey = openAiApiKey(modelInfo.baseUrl);
       const { ChatOpenAI } = await import("@langchain/openai");
       return new ChatOpenAI({
         model: modelInfo.model,
+        apiKey,
+        configuration: { baseURL: modelInfo.baseUrl },
       });
     }
 

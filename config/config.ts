@@ -8,7 +8,9 @@ export interface Config {
   summarize: boolean;
   llmProvider: ModelProvider | undefined;
   llmName: string | undefined;
+  llmBaseUrl: string | undefined;
   processImages: boolean;
   vlmProvider: ModelProvider | undefined;
   vlmName: string | undefined;
+  vlmBaseUrl: string | undefined;
 }

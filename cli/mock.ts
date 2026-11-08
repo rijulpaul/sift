@@ -117,9 +117,11 @@ const DEFAULT_CONFIG: Config = {
   summarize: false,
   llmProvider: "openrouter",
   llmName: "openai/gpt-oss-120b",
+  llmBaseUrl: undefined,
   processImages: false,
   vlmProvider: undefined,
   vlmName: undefined,
+  vlmBaseUrl: undefined,
 };
 
 const toContent = (text: string): MaskedContent => ({

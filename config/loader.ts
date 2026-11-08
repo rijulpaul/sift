@@ -109,26 +109,37 @@ export const resolveConfig = (overrides: ConfigOverrides = {}): Config => {
     summarize: Boolean(raw.summarize),
     llmProvider: asString(raw.llm_provider) as ModelProvider | undefined,
     llmName: asString(raw.llm_name),
+    llmBaseUrl: asString(raw.llm_base_url),
     processImages: Boolean(raw.process_images),
     vlmProvider: asString(raw.vlm_provider) as ModelProvider | undefined,
     vlmName: asString(raw.vlm_name),
+    vlmBaseUrl: asString(raw.vlm_base_url),
   };
 };
 
 /**
  * Config values that are still unset and required to run sift.
+ *
  * `email` is optional when `create_email` is enabled (a random inbox is
  * created), and the vision settings are only needed for image processing.
+ *
+ * A model is identified either by a name or, for a self-hosted OpenAI
+ * endpoint, by its base URL: the launcher asks one or the other, so either
+ * satisfies the requirement.
  */
 const checkMissingFields = (config: Config) => {
   const missing: (keyof Config)[] = [];
 
   if (!config.email && !config.createEmail) missing.push("email");
   if (!config.llmProvider) missing.push("llmProvider");
-  if (!config.llmName) missing.push("llmName");
+  if (!config.llmName && !config.llmBaseUrl) {
+    missing.push("llmName", "llmBaseUrl");
+  }
   if (config.processImages) {
     if (!config.vlmProvider) missing.push("vlmProvider");
-    if (!config.vlmName) missing.push("vlmName");
+    if (!config.vlmName && !config.vlmBaseUrl) {
+      missing.push("vlmName", "vlmBaseUrl");
+    }
   }
 
   if (missing.length > 0) {

@@ -43,9 +43,11 @@ const completeRaw = {
   summarize: true,
   llm_provider: "openrouter",
   llm_name: "openai/gpt-oss-120b",
+  llm_base_url: null,
   process_images: false,
   vlm_provider: null,
   vlm_name: null,
+  vlm_base_url: null,
 };
 
 const givenFile = (raw: unknown) => {
@@ -227,6 +229,64 @@ describe("validateConfig — vision settings", () => {
 
     expect(err.message).toMatch(/was not found/);
     expect(err.message).not.toMatch(/Missing configuration for/);
+  });
+});
+
+describe("validateConfig — model settings", () => {
+  /** A file and a config in step: only the model settings differ per test. */
+  const validateWith = (overrides: Partial<Config>) => {
+    givenFile(completeRaw);
+    return validateConfig({ ...resolveConfig(), ...overrides });
+  };
+
+  it("accepts a base URL instead of a model name", () => {
+    // A self-hosted OpenAI endpoint is identified by its address, so the
+    // launcher never asks for a model name.
+    expect(() =>
+      validateWith({
+        llmProvider: "openai",
+        llmName: undefined,
+        llmBaseUrl: "http://localhost:11434/v1",
+      }),
+    ).not.toThrow();
+  });
+
+  it("asks for a name or a base URL, not both, when neither is set", () => {
+    const err = caught(() =>
+      validateWith({
+        llmProvider: "openai",
+        llmName: undefined,
+        llmBaseUrl: undefined,
+      }),
+    );
+
+    expect(err.message).toMatch(/llm_name/);
+    expect(err.message).toMatch(/llm_base_url/);
+  });
+
+  it("accepts a vision base URL instead of a vision model name", () => {
+    expect(() =>
+      validateWith({
+        processImages: true,
+        vlmProvider: "openai",
+        vlmName: undefined,
+        vlmBaseUrl: "http://vision.local:8000/v1",
+      }),
+    ).not.toThrow();
+  });
+
+  it("names both vision settings when neither is set", () => {
+    const err = caught(() =>
+      validateWith({
+        processImages: true,
+        vlmProvider: "openai",
+        vlmName: undefined,
+        vlmBaseUrl: undefined,
+      }),
+    );
+
+    expect(err.message).toMatch(/vlm_name/);
+    expect(err.message).toMatch(/vlm_base_url/);
   });
 });
 

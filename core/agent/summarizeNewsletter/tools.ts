@@ -18,15 +18,19 @@ export const describeImage = tool(
       return `Invalid link id ${link_id}`;
     } else if (link.isImage) {
       const toolConfig: ToolConfig = context.toolConfig;
-      if (!toolConfig.vlmProvider || !toolConfig.vlmName) {
+      if (
+        !toolConfig.vlmProvider ||
+        (!toolConfig.vlmName && !toolConfig.baseUrl)
+      ) {
         throw new Error(
-          "Vision settings (vlm_provider, vlm_name) are not configured, but image processing was requested",
+          "Vision settings (vlm_provider, vlm_name or vlm_base_url) are not configured, but image processing was requested",
         );
       }
       if (!describeImageAgent) {
         describeImageAgent = await DescribeImageAgent.create({
           modelProvider: toolConfig.vlmProvider,
-          model: toolConfig.vlmName,
+          model: toolConfig.vlmName ?? "",
+          baseUrl: toolConfig.baseUrl,
         });
       }
 

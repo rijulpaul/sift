@@ -51,9 +51,16 @@ export class SiftCore {
 
     // Missing vision settings only surface when the summarizer actually
     // requests an image description, so warn about it at startup instead.
-    if (config.processImages && (!config.vlmProvider || !config.vlmName)) {
+    if (
+      config.processImages &&
+      (!config.vlmProvider || (!config.vlmName && !config.vlmBaseUrl))
+    ) {
       log.warn(
-        { vlmProvider: config.vlmProvider, vlmName: config.vlmName },
+        {
+          vlmProvider: config.vlmProvider,
+          vlmName: config.vlmName,
+          vlmBaseUrl: config.vlmBaseUrl,
+        },
         "processImages is enabled but vision settings are incomplete, image descriptions will fail",
       );
     }
@@ -75,12 +82,14 @@ export class SiftCore {
   private getAgent(): Promise<NewsletterSummarizationAgent> {
     this.agentPromise ??= NewsletterSummarizationAgent.create(
       {
-        model: this.config.llmName!,
+        model: this.config.llmName ?? "",
         modelProvider: this.config.llmProvider!,
+        baseUrl: this.config.llmBaseUrl,
       },
       {
         vlmProvider: this.config.vlmProvider,
         vlmName: this.config.vlmName,
+        baseUrl: this.config.vlmBaseUrl,
         processImages: this.config.processImages,
       },
     ).catch((error: unknown) => {
