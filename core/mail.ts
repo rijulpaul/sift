@@ -24,12 +24,6 @@ async function handleApiCall<T>(
 
 export type Label = string | Array<string> | undefined;
 
-export interface InboxConfig {
-  email?: string;
-  displayName?: string;
-  createEmail: boolean;
-}
-
 export class Inbox {
   private static client: AgentMailClient = new AgentMailClient({
     apiKey: process.env.AGENTMAIL_API_KEY,
@@ -52,36 +46,33 @@ export class Inbox {
     this.displayName = displayName;
   }
 
-  static init = async (inboxConfig: InboxConfig): Promise<Inbox> => {
+  static init = async (email: string): Promise<Inbox> => {
     if (!process.env.AGENTMAIL_API_KEY) {
       log.warn("AGENTMAIL_API_KEY is not set, mail requests will fail");
     }
 
-    log.info({ email: inboxConfig.email ?? "(none)" }, "initializing inbox");
+    log.info({ email }, "initializing inbox");
 
-    let inboxId: string | undefined;
-    let email: string = "";
+    let inboxId: string = "";
     let displayName: string | undefined;
     let next_page_token: string | undefined;
 
     // Given an email
     // 1. check if the email id exists
     // 2. get inboxId if yes
-    if (inboxConfig.email) {
-      // validate email
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(inboxConfig.email)) {
-        log.error({ email: inboxConfig.email }, "invalid email address");
-        throw new Error(`Invalid email: ${inboxConfig.email}`);
+      if (!emailRegex.test(email)) {
+        log.error({ email }, "invalid email address");
+        throw new Error(`Invalid email: ${email}`);
       }
 
-      log.debug({ email: inboxConfig.email }, "searching for existing inbox");
+      log.debug({ email: email }, "searching for existing inbox");
 
       let pages = 0;
       do {
         const res = await handleApiCall(
           "search inboxes",
-          { email: inboxConfig.email, page: pages + 1 },
+          { email, page: pages + 1 },
           () =>
             this.client.inboxes.list({
               pageToken: next_page_token,
@@ -95,7 +86,7 @@ export class Inbox {
         );
 
         for (const i of res.inboxes) {
-          if (i.email == inboxConfig.email) {
+          if (i.email == email) {
             inboxId = i.inboxId;
             email = i.email;
             displayName = i.displayName || undefined;
@@ -103,40 +94,17 @@ export class Inbox {
           }
         }
       } while (next_page_token && !inboxId);
-    }
 
     // create a new email and get inboxId (random if email not provided)
     if (!inboxId) {
-      if (inboxConfig.createEmail) {
-        const [username, domain] = inboxConfig.email?.split("@") || [];
-        log.info(
-          { username: username ?? "(random)", domain: domain ?? "(default)" },
-          "creating new inbox",
-        );
-        const inbox = await handleApiCall(
-          "create inbox",
-          { email: inboxConfig.email },
-          () =>
-            this.client.inboxes.create({
-              username: username,
-              domain: domain,
-              displayName: inboxConfig.displayName,
-            }),
-        );
-        inboxId = inbox.inboxId;
-        displayName = inbox.displayName || undefined;
-        email = inbox.email;
-        log.info({ inbox_id: inboxId }, "inbox created");
-      } else {
         log.error(
-          { email: inboxConfig.email },
+          { email: email },
           "inbox not found and createEmail is disabled",
         );
         throw new Error(
-          `Email ${inboxConfig.email} not found and createEmail is set to false` +
+          `Email ${email} not found and createEmail is set to false` +
             " Set createEmail to true in config or add a valid email id",
         );
-      }
     }
 
     return new Inbox({ inboxId, email, displayName });

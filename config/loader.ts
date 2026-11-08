@@ -77,12 +77,6 @@ export const writeRawConfig = (config: RawConfig): void => {
  * core creates an inbox, and without this the next run would create another
  * one and the first would be unreachable.
  */
-export const persistEmail = (email: string | undefined): void => {
-  const address = (email ?? "").trim();
-  if (address === "") return;
-
-  writeRawConfig({ ...readRawConfig(), email: address });
-};
 
 export const toSnakeCase = (key: string): string =>
   key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
@@ -102,11 +96,9 @@ export const resolveConfig = (overrides: ConfigOverrides = {}): Config => {
   }
 
   return {
-    email: asString(raw.email),
+    email: asString(raw.email)!,
     displayName: undefined,
-    createEmail: Boolean(raw.create_email),
     markAsRead: Boolean(raw.mark_as_read),
-    summarize: Boolean(raw.summarize),
     llmProvider: asString(raw.llm_provider) as ModelProvider | undefined,
     llmName: asString(raw.llm_name),
     llmBaseUrl: asString(raw.llm_base_url),
@@ -130,7 +122,7 @@ export const resolveConfig = (overrides: ConfigOverrides = {}): Config => {
 const checkMissingFields = (config: Config) => {
   const missing: (keyof Config)[] = [];
 
-  if (!config.email && !config.createEmail) missing.push("email");
+  if (!config.email) missing.push("email");
   if (!config.llmProvider) missing.push("llmProvider");
   if (!config.llmName && !config.llmBaseUrl) {
     missing.push("llmName", "llmBaseUrl");

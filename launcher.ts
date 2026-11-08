@@ -110,9 +110,7 @@ const promptFor = async (
   const isEmail = key === "email";
   const isBaseUrl = BASE_URL_KEYS.has(key);
   const value = await p.text({
-    message: isEmail
-      ? `${description} (leave empty to auto-create an inbox)`
-      : description,
+    message: description,
     placeholder: current === null ? "not set" : undefined,
     initialValue: typeof current === "string" ? current : undefined,
     validate: (input) => {

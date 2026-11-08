@@ -15,7 +15,6 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import {
   assertConfigFileComplete,
-  persistEmail,
   readRawConfig,
   resolveConfig,
   validateConfig,
@@ -125,7 +124,7 @@ describe("assertConfigFileComplete", () => {
 
     const err = caught(assertConfigFileComplete);
 
-    expect(err.message).toMatch(/is incomplete, missing: email, create_email/);
+    expect(err.message).toMatch(/is incomplete, missing: email/);
   });
 
   it("accepts a complete file, including keys whose value is null", () => {
@@ -143,9 +142,7 @@ describe("resolveConfig", () => {
 
     expect(config.llmProvider).toBe("openrouter");
     expect(config.llmName).toBe("openai/gpt-oss-120b");
-    expect(config.createEmail).toBe(false);
     expect(config.markAsRead).toBe(true);
-    expect(config.summarize).toBe(true);
     expect(config.email).toBeUndefined(); // "" counts as unset
     expect(config.vlmName).toBeUndefined(); // whitespace counts as unset
   });
@@ -287,44 +284,5 @@ describe("validateConfig — model settings", () => {
 
     expect(err.message).toMatch(/vlm_name/);
     expect(err.message).toMatch(/vlm_base_url/);
-  });
-});
-
-describe("persistEmail", () => {
-  it("writes the created address without losing the other settings", () => {
-    givenFile(completeRaw);
-
-    persistEmail("fresh@agentmail.to");
-
-    expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
-    expect(written()).toEqual({ ...completeRaw, email: "fresh@agentmail.to" });
-  });
-
-  it("trims the address", () => {
-    givenFile(completeRaw);
-
-    persistEmail("  fresh@agentmail.to  ");
-
-    expect(written().email).toBe("fresh@agentmail.to");
-  });
-
-  it("writes nothing when there is no address", () => {
-    givenFile(completeRaw);
-
-    persistEmail(undefined);
-    persistEmail("   ");
-
-    expect(fs.writeFileSync).not.toHaveBeenCalled();
-  });
-
-  it("leaves a complete file complete", () => {
-    givenFile(completeRaw);
-    persistEmail("fresh@agentmail.to");
-
-    fs.readFileSync.mockReturnValue(
-      fs.writeFileSync.mock.calls[0]?.[1] as string,
-    );
-
-    expect(() => assertConfigFileComplete()).not.toThrow();
   });
 });

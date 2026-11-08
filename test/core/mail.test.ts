@@ -119,10 +119,9 @@ describe("Mail.init — inbox discovery/creation", () => {
     });
 
     // Act
-    const inbox = await Inbox.init({
-      email: "news@example.com",
-      createEmail: true,
-    });
+    const inbox = await Inbox.init(
+       "news@example.com"
+    );
 
     // Assert — the returned Inbox must be bound to the FOUND inbox.
     expect(inbox.inbox_id).toBe("inbox-found");
@@ -143,10 +142,9 @@ describe("Mail.init — inbox discovery/creation", () => {
       });
 
     // Act
-    const inbox = await Inbox.init({
-      email: "news@example.com",
-      createEmail: true,
-    });
+    const inbox = await Inbox.init(
+       "news@example.com"
+    );
 
     // Assert — both pages were searched, the second one passing the token...
     expect(mocks.listInboxes).toHaveBeenCalledTimes(2);
@@ -157,68 +155,9 @@ describe("Mail.init — inbox discovery/creation", () => {
     expect(inbox.inbox_id).toBe("inbox-2");
   });
 
-  it("creates a new inbox when no existing one matches and createEmail is 'true'", async () => {
-    // Arrange — search comes back empty
-    mocks.listInboxes.mockResolvedValue({ inboxes: [] });
-    mocks.create.mockResolvedValue({ inboxId: "inbox-new" });
-
-    // Act
-    const inbox = await Inbox.init({
-      email: "news@example.com",
-      createEmail: true,
-    });
-
-    // Assert — username/domain are derived from the email address
-    expect(mocks.create).toHaveBeenCalledWith({
-      username: "news",
-      domain: "example.com",
-      displayName: undefined,
-    });
-
-    // The created inbox id is what the Inbox is bound to.
-    expect(inbox.inbox_id).toBe("inbox-new");
-  });
-
-  it("creates an inbox even when no email is provided and createEmail is 'true'", async () => {
-    // Arrange
-    mocks.create.mockResolvedValue({ inboxId: "inbox-anon" });
-
-    // Act — no email → no search is performed, creation happens directly
-    const inbox = await Inbox.init({ createEmail: true });
-
-    // Assert
-    expect(mocks.listInboxes).not.toHaveBeenCalled();
-    expect(mocks.create).toHaveBeenCalledWith({
-      username: undefined,
-      domain: undefined,
-      displayName: undefined,
-    });
-
-    expect(inbox.inbox_id).toBe("inbox-anon");
-  });
-
-  it("DOES NOT create a new inbox when no existing one matches and createEmail is 'false'", async () => {
-    // Act
-    await expect(
-      Inbox.init({ email: "news@example.com", createEmail: false }),
-    ).rejects.toThrow();
-
-    // Assert
-    expect(mocks.create).not.toHaveBeenCalled();
-  });
-
-  it("DOES NOT create an inbox even when no email is provided and createEmail is 'false'", async () => {
-    // Act — no email → no search is performed, creation doesnt happen (createEmail: false)
-    await expect(Inbox.init({ createEmail: false })).rejects.toThrow();
-
-    // Assert
-    expect(mocks.listInboxes).not.toHaveBeenCalled();
-    expect(mocks.create).not.toHaveBeenCalled();
-  });
-
   it("rejects an invalid email before calling the API", async () => {
     const err = await catchError(
-      Inbox.init({ email: "not-an-email", createEmail: true }),
+      Inbox.init("not-an-email"),
     );
 
     expect(err.message).toBe("Invalid email: not-an-email");
@@ -232,7 +171,7 @@ describe("Mail.init — inbox discovery/creation", () => {
     mocks.listInboxes.mockResolvedValue({ inboxes: [] });
 
     const err = await catchError(
-      Inbox.init({ email: "news@example.com", createEmail: false }),
+      Inbox.init("news@example.com"),
     );
 
     expect(err.message).toMatch(/createEmail is set to false/);
@@ -250,7 +189,7 @@ describe("Mail.init — API failures", () => {
     mocks.listInboxes.mockRejectedValueOnce(boom);
 
     const err = await catchError(
-      Inbox.init({ email: "news@example.com", createEmail: true }),
+      Inbox.init("news@example.com"),
     );
 
     expect(err.message).toBe("search inboxes failed: search unavailable");
@@ -264,30 +203,6 @@ describe("Mail.init — API failures", () => {
       }),
       "search inboxes failed",
     );
-  });
-
-  it("wraps a failed inbox creation", async () => {
-    mocks.listInboxes.mockResolvedValue({ inboxes: [] });
-    const boom = new Error("quota exceeded");
-    mocks.create.mockRejectedValueOnce(boom);
-
-    const err = await catchError(
-      Inbox.init({ email: "news@example.com", createEmail: true }),
-    );
-
-    expect(err.message).toBe("create inbox failed: quota exceeded");
-    expect(err.cause).toBe(boom);
-    expect(loggedMessages("error")).toContain("create inbox failed");
-  });
-
-  it("handles a rejection that is not an Error instance", async () => {
-    mocks.create.mockRejectedValueOnce("plain string reason");
-    mocks.listInboxes.mockResolvedValue({ inboxes: [] });
-
-    const err = await catchError(Inbox.init({ createEmail: true }));
-
-    expect(err.message).toBe("create inbox failed: plain string reason");
-    expect(err.cause).toBe("plain string reason");
   });
 });
 

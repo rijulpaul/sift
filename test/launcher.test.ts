@@ -41,9 +41,7 @@ const confirm = vi.mocked(p.confirm);
 /** A defaults.json with nothing set, so every prompt asks its question. */
 const emptyRaw = {
   email: null,
-  create_email: false,
   mark_as_read: false,
-  summarize: false,
   llm_provider: null,
   llm_name: null,
   llm_base_url: null,
@@ -100,7 +98,7 @@ beforeEach(() => {
 /** The answers every run needs, whatever it is testing. */
 const baseAnswers = {
   text: ["news@example.com"],
-  confirm: [false, false, false, false], // create_email, mark_as_read, summarize, process_images
+  confirm: [false, false], // create_email, mark_as_read, summarize, process_images
 };
 
 describe("launcher — custom OpenAI endpoints", () => {
@@ -115,7 +113,7 @@ describe("launcher — custom OpenAI endpoints", () => {
 
     // The question that appears where the model name would have been asked.
     expect(asked(text)).toEqual([
-      "Email address to use (leave empty to auto-create an inbox)",
+      "Email address to use",
       "LLM Custom Endpoint URL (OpenAI compatible)",
     ]);
     expect(asked(text)).not.toContain("LLM model name");
@@ -153,8 +151,8 @@ describe("launcher — custom OpenAI endpoints", () => {
         "openai/gpt-oss-20b",
         "http://vision.local:8000/v1",
       ],
-      // create_email, mark_as_read, summarize, process_images = true
-      confirm: [false, false, false, true],
+      // summarize, process_images = true
+      confirm: [false, true],
       select: ["openrouter", "custom endpoint (OpenAI compatible)"],
     });
 

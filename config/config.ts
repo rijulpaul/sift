@@ -1,11 +1,9 @@
 import type { ModelProvider } from "../core/agent/model";
 
 export interface Config {
-  email: string | undefined;
+  email: string;
   displayName: string | undefined;
-  createEmail: boolean;
   markAsRead: boolean;
-  summarize: boolean;
   llmProvider: ModelProvider | undefined;
   llmName: string | undefined;
   llmBaseUrl: string | undefined;

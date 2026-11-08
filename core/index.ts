@@ -39,7 +39,7 @@ export class SiftCore {
     log.debug({ config }, "starting sift core");
 
     // Inbox.init logs its own discovery/creation steps.
-    const inbox = await Inbox.init(config);
+    const inbox = await Inbox.init(config.email);
 
     log.info("sift core ready");
     return new SiftCore({ config, inbox });
