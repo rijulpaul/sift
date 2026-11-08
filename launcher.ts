@@ -159,8 +159,15 @@ const configure = async (
     if (key.endsWith("_provider")) {
       const choice = await promptForProvider(key, working[key] ?? null);
       working[key] = choice.provider;
-      if (choice.customEndpoint) customEndpoints.add(prefixOf(key));
-      else customEndpoints.delete(prefixOf(key));
+      // Drop the value that the new choice does not use, so a model name and
+      // a base URL never linger side by side after switching providers.
+      if (choice.customEndpoint) {
+        customEndpoints.add(prefixOf(key));
+        working[`${prefixOf(key)}_name`] = null;
+      } else {
+        customEndpoints.delete(prefixOf(key));
+        working[`${prefixOf(key)}_base_url`] = null;
+      }
       continue;
     }
 

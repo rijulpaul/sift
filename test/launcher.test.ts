@@ -171,6 +171,52 @@ describe("launcher — custom OpenAI endpoints", () => {
     });
   });
 
+  it("drops a stale model name when switching to a custom endpoint", async () => {
+    fs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        ...emptyRaw,
+        llm_provider: "openrouter",
+        llm_name: "openai/gpt-oss-120b",
+      }),
+    );
+    givenAnswers({
+      ...baseAnswers,
+      select: ["custom endpoint (OpenAI compatible)"],
+      text: [...baseAnswers.text, "http://localhost:11434/v1"],
+    });
+
+    await createConfig();
+
+    expect(written()).toMatchObject({
+      llm_provider: "openai",
+      llm_name: null,
+      llm_base_url: "http://localhost:11434/v1",
+    });
+  });
+
+  it("drops a stale base URL when switching to a named provider", async () => {
+    fs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        ...emptyRaw,
+        llm_provider: "openai",
+        llm_base_url: "http://localhost:11434/v1",
+      }),
+    );
+    givenAnswers({
+      ...baseAnswers,
+      select: ["openrouter"],
+      text: [...baseAnswers.text, "openai/gpt-oss-20b"],
+    });
+
+    await createConfig();
+
+    expect(written()).toMatchObject({
+      llm_provider: "openrouter",
+      llm_name: "openai/gpt-oss-20b",
+      llm_base_url: null,
+    });
+  });
+
   it("rejects a base URL that is not a URL", async () => {
     givenAnswers({
       ...baseAnswers,
