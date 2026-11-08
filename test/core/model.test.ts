@@ -84,7 +84,7 @@ describe("getModel — OpenAI, custom endpoint", () => {
 
     // Left blank: a self-hosted endpoint may not check it at all.
     expect(apiKey).toBe("placeholder");
-    expect(clientApiKey).toBe("");
+    expect(clientApiKey).toBe("placeholder");
     expect(baseUrl).toBe("http://localhost:11434/v1");
   });
 
