@@ -24,16 +24,12 @@ const readyBody = (extra: Partial<MailBody> = {}): BodyState => ({
   },
 });
 
-/** The text of a view that is running text. Fails loudly on a block view. */
-const textOf = (view: ReturnType<typeof bodyView>): string => {
-  if (view.kind !== "text") throw new Error(`expected text, got ${view.kind}`);
-  return view.text;
-};
+/** A summary that has finished streaming. */
+const summaryOf = (text: string): SummaryState => ({ status: "done", text });
 
-describe("bodyView — text view", () => {
-  it("shows the message text", () => {
+describe("bodyView — the message", () => {
+  it("shows the message as markdown", () => {
     expect(bodyView(readyBody(), false, undefined)).toEqual({
-      kind: "text",
       text: "The message text",
       format: "markdown",
     });
@@ -46,124 +42,78 @@ describe("bodyView — text view", () => {
         false,
         undefined,
       ),
-    ).toEqual({ kind: "text", text: NO_CONTENT_MESSAGE, format: "note" });
+    ).toEqual({ text: NO_CONTENT_MESSAGE, format: "note" });
   });
 
   it("ignores any summary while the text view is showing", () => {
-    const done: SummaryState = { status: "done", text: "A summary" };
-    expect(textOf(bodyView(readyBody(), false, done))).toBe("The message text");
+    const view = bodyView(readyBody(), false, summaryOf("A summary"));
+
+    expect(view.text).toBe("The message text");
   });
 });
 
 describe("bodyView — before the body arrives", () => {
   it("says it is loading while the message is fetched", () => {
     expect(bodyView({ status: "loading" }, false, undefined)).toEqual({
-      kind: "text",
       text: BODY_PENDING_MESSAGE,
       format: "note",
     });
   });
 
   it("says it is loading when nothing has been fetched yet", () => {
-    expect(textOf(bodyView(undefined, false, undefined))).toBe(
+    expect(bodyView(undefined, false, undefined).text).toBe(
       BODY_PENDING_MESSAGE,
     );
   });
 
   it("reports a failed fetch and how to retry", () => {
-    const failed = bodyView(
-      { status: "error", message: "network down" },
+    const { text, format } = bodyView(
+      { status: "error", message: "boom" },
       false,
       undefined,
     );
-    const text = textOf(failed);
 
+    expect(format).toBe("note");
     expect(text).toContain("Couldn't load this message.");
-    expect(text).toContain("network down");
+    expect(text).toContain("boom");
     expect(text).toContain("Press enter to try again.");
   });
 });
 
-describe("bodyView — summary view", () => {
-  it("shows a pending placeholder before the first chunk arrives", () => {
+describe("bodyView — the summary", () => {
+  it("says it is summarizing before the first chunk arrives", () => {
+    expect(bodyView(readyBody(), true, undefined)).toEqual({
+      text: SUMMARY_PENDING_MESSAGE,
+      format: "note",
+    });
     expect(
       bodyView(readyBody(), true, { status: "streaming", text: "" }),
-    ).toEqual({ kind: "text", text: SUMMARY_PENDING_MESSAGE, format: "note" });
+    ).toEqual({ text: SUMMARY_PENDING_MESSAGE, format: "note" });
+    expect(
+      bodyView(readyBody(), true, { status: "streaming", text: "  \n " }),
+    ).toEqual({ text: SUMMARY_PENDING_MESSAGE, format: "note" });
   });
 
-  it("shows the pending placeholder when no summary exists yet", () => {
-    expect(textOf(bodyView(readyBody(), true, undefined))).toBe(
-      SUMMARY_PENDING_MESSAGE,
-    );
-  });
+  it("draws the summary as markdown once it has arrived", () => {
+    const markdown = "## Aggregators\n\nThey capture demand.";
 
-  it("draws a summary as its parts, so the title is a title", () => {
-    const raw = JSON.stringify({
-      title: "Aggregators",
-      content: [{ type: "text", text: "The piece argues it." }],
-    });
-
-    expect(bodyView(readyBody(), true, { status: "done", text: raw })).toEqual({
-      kind: "blocks",
-      title: "Aggregators",
-      blocks: [{ kind: "text", text: "The piece argues it.", complete: true }],
-      note: undefined,
+    expect(bodyView(readyBody(), true, summaryOf(markdown))).toEqual({
+      text: markdown,
+      format: "markdown",
     });
   });
 
-  it("hands over the blocks when the summary carries a picture", () => {
-    const raw = JSON.stringify({
-      title: "Aggregators",
-      content: [
-        { type: "text", text: "The piece argues it." },
-        { type: "image", url: "https://cdn.example.com/chart.png" },
-      ],
-    });
-
-    expect(bodyView(readyBody(), true, { status: "done", text: raw })).toEqual({
-      kind: "blocks",
-      title: "Aggregators",
-      blocks: [
-        { kind: "text", text: "The piece argues it.", complete: true },
-        {
-          kind: "image",
-          url: "https://cdn.example.com/chart.png",
-          complete: true,
-        },
-      ],
-      note: undefined,
-    });
-  });
-
-  it("renders a half-written document without waiting for the rest", () => {
-    const partial =
-      '{"title":"Aggregators","content":[{"type":"text","text":"The piece';
+  it("streams what has arrived instead of waiting for the end", () => {
+    // Half a document is still readable, so it is shown as it comes.
+    const partial = "## Aggregators\n\nThey capture";
 
     expect(
       bodyView(readyBody(), true, { status: "streaming", text: partial }),
-    ).toEqual({
-      kind: "blocks",
-      title: "Aggregators",
-      blocks: [{ kind: "text", text: "The piece", complete: false }],
-      note: undefined,
-    });
-  });
-
-  it("still says it is summarizing while only JSON punctuation has arrived", () => {
-    expect(
-      bodyView(readyBody(), true, { status: "streaming", text: '{"title":' }),
-    ).toEqual({ kind: "text", text: SUMMARY_PENDING_MESSAGE, format: "note" });
-  });
-
-  it("falls back to the text when the model ignored the shape", () => {
-    expect(
-      bodyView(readyBody(), true, { status: "done", text: "Just some prose." }),
-    ).toEqual({ kind: "text", text: "Just some prose.", format: "markdown" });
+    ).toEqual({ text: partial, format: "markdown" });
   });
 
   it("keeps a partial summary readable when the stream breaks", () => {
-    const partial =
-      '{"title":"Aggregators","content":[{"type":"text","text":"The piece';
+    const partial = "## Aggregators\n\nThey capture";
 
     const view = bodyView(readyBody(), true, {
       status: "error",
@@ -171,53 +121,28 @@ describe("bodyView — summary view", () => {
       error: "stream broke",
     });
 
-    expect(view.kind).toBe("blocks");
-    if (view.kind !== "blocks") return;
-
-    expect(view.title).toBe("Aggregators");
-    expect(view.blocks).toEqual([
-      { kind: "text", text: "The piece", complete: false },
-    ]);
-    expect(view.note).toBe("— Summary interrupted: stream broke");
+    expect(view).toEqual({ text: partial, format: "markdown" });
   });
 
   it("explains a failure and how to retry when nothing was produced", () => {
-    const text = textOf(
-      bodyView(readyBody(), true, {
-        status: "error",
-        text: "",
-        error: "model unavailable",
-      }),
-    );
+    const { text, format } = bodyView(readyBody(), true, {
+      status: "error",
+      text: "",
+      error: "model unavailable",
+    });
 
+    expect(format).toBe("note");
     expect(text).toContain("Couldn't summarize this message.");
     expect(text).toContain("model unavailable");
     expect(text).toContain("Press s to try again.");
-  });
-
-  it("reports an interruption after the blocks when a picture arrived", () => {
-    const raw = JSON.stringify({
-      title: "Aggregators",
-      content: [{ type: "image", url: "https://cdn.example.com/chart.png" }],
-    });
-
-    const view = bodyView(readyBody(), true, {
-      status: "error",
-      text: raw,
-      error: "stream broke",
-    });
-
-    expect(view.kind).toBe("blocks");
-    if (view.kind !== "blocks") return;
-    expect(view.note).toBe("— Summary interrupted: stream broke");
   });
 });
 
 describe("bodySegments", () => {
   it("draws a note as a single piece of text", () => {
-    expect(
-      bodySegments({ kind: "text", text: "Loading…", format: "note" }),
-    ).toEqual([{ kind: "text", text: "Loading…", style: "note" }]);
+    expect(bodySegments({ text: "Loading…", format: "note" })).toEqual([
+      { kind: "text", text: "Loading…", style: "note" },
+    ]);
   });
 
   it("hands the message's own markdown to the markdown renderer", () => {
@@ -229,8 +154,6 @@ describe("bodySegments", () => {
   });
 
   it("draws the pictures in the message as pictures, between the prose", () => {
-    // The message is markdown, so a picture standing on its own line is a
-    // picture to draw — the same as one in a summary.
     const view = bodyView(
       readyBody({
         text: [
@@ -250,75 +173,33 @@ describe("bodySegments", () => {
     ]);
   });
 
-  it("draws the title, the paragraphs and the pictures in order", () => {
-    const view = bodyView(readyBody(), true, {
-      status: "done",
-      text: JSON.stringify({
-        title: "Aggregators",
-        content: [
-          { type: "text", text: "First." },
-          { type: "image", url: "https://cdn.example.com/a.png" },
-          { type: "text", text: "Second." },
-        ],
-      }),
-    });
+  it("draws a summary's pictures the same way as the message's", () => {
+    const markdown = [
+      "## Aggregators",
+      "",
+      "They capture demand.",
+      "",
+      "![A chart](https://cdn.example.com/a.png)",
+    ].join("\n");
 
-    // The title is its own style, so it can be emphasised above the rest.
-    expect(bodySegments(view)).toEqual([
-      { kind: "text", text: "Aggregators", style: "title" },
-      { kind: "text", text: "First.", style: "body" },
+    expect(
+      bodySegments(bodyView(readyBody(), true, summaryOf(markdown))),
+    ).toEqual([
+      { kind: "markdown", text: "## Aggregators\n\nThey capture demand." },
       { kind: "image", url: "https://cdn.example.com/a.png" },
-      { kind: "text", text: "Second.", style: "body" },
     ]);
   });
 
-  it("shows an address rather than fetching a half-written one", () => {
-    // Only the block's closing brace makes an address safe to fetch.
-    const partial =
-      '{"content":[{"type":"image","url":"https://cdn.example.com/char';
+  it("leaves a half-written picture in the prose, so nothing is fetched", () => {
+    // "![A chart](https://cdn.exam" is not a whole line yet: it must not become
+    // a picture to load, and it must not disappear either.
+    const partial = "See ![A chart](https://cdn.exam";
 
-    const view = bodyView(readyBody(), true, {
-      status: "streaming",
-      text: partial,
-    });
+    const segments = bodySegments(
+      bodyView(readyBody(), true, { status: "streaming", text: partial }),
+    );
 
-    expect(bodySegments(view)).toEqual([
-      {
-        kind: "text",
-        text: imageCaption("https://cdn.example.com/char"),
-        style: "note",
-      },
-    ]);
-  });
-
-  it("draws the picture once its block is whole", () => {
-    const raw =
-      '{"content":[{"type":"image","url":"https://cdn.example.com/chart.png"}]}';
-
-    const view = bodyView(readyBody(), true, { status: "done", text: raw });
-
-    expect(bodySegments(view)).toEqual([
-      { kind: "image", url: "https://cdn.example.com/chart.png" },
-    ]);
-  });
-
-  it("puts the interruption note last", () => {
-    const raw =
-      '{"title":"T","content":[{"type":"image","url":"https://cdn.example.com/a.png"}]}';
-
-    const view = bodyView(readyBody(), true, {
-      status: "error",
-      text: raw,
-      error: "stream broke",
-    });
-
-    const segments = bodySegments(view);
-
-    expect(segments.at(-1)).toEqual({
-      kind: "text",
-      text: "— Summary interrupted: stream broke",
-      style: "note",
-    });
+    expect(segments).toEqual([{ kind: "markdown", text: partial }]);
   });
 });
 

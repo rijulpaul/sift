@@ -14,17 +14,6 @@
  */
 import type { MaskedUrls } from "./process";
 
-/** Shown in place of an image when the model kept no alt text. */
-const IMAGE = "image";
-
-const imageLabel = (alt: string, url: string): string =>
-  alt.trim() === ""
-    ? `[${IMAGE}] (${url})`
-    : `[${IMAGE}: ${alt.trim()}] (${url})`;
-
-const linkLabel = (text: string, url: string): string =>
-  text.trim() === "" ? url : `${text} (${url})`;
-
 /** `![alt](LINK_0)` and `[text](LINK_0)`, most specific first. */
 const IMAGE_MARKDOWN = /!\[([^\]]*)\]\(LINK_(\d+)\)/gi;
 const LINK_MARKDOWN = /\[([^\]]*)\]\(LINK_(\d+)\)/gi;
@@ -32,24 +21,26 @@ const LINK_MARKDOWN = /\[([^\]]*)\]\(LINK_(\d+)\)/gi;
 const BARE_TOKEN = /LINK_(\d+)/gi;
 
 /**
- * Replace every placeholder in `text` with its real URL. The markdown shapes
- * become `label (url)` rather than `[label](url)`, since the result is read as
- * plain text. Unknown ids are left alone, so a bug stays visible.
+ * Replace every placeholder in `text` with its real URL.
+ *
+ * The markdown shapes stay markdown: a summary is drawn as markdown, so an
+ * image has to remain an image for the reader to see it. Unknown ids are left
+ * alone, so a bug stays visible.
  */
 export function resolveLinks(text: string, links: MaskedUrls): string {
+  const urlOf = (id: string): string | undefined => links[Number(id)]?.url;
+
   return text
     .replace(IMAGE_MARKDOWN, (whole, alt: string, id: string) => {
-      const url = links[Number(id)]?.url;
-      return url === undefined ? whole : imageLabel(alt, url);
+      const url = urlOf(id);
+      return url === undefined ? whole : `![${alt}](${url})`;
     })
     .replace(LINK_MARKDOWN, (whole, label: string, id: string) => {
-      const url = links[Number(id)]?.url;
-      return url === undefined ? whole : linkLabel(label, url);
+      const url = urlOf(id);
+      if (url === undefined) return whole;
+      return label.trim() === "" ? url : `[${label}](${url})`;
     })
-    .replace(
-      BARE_TOKEN,
-      (whole, id: string) => links[Number(id)]?.url ?? whole,
-    );
+    .replace(BARE_TOKEN, (whole, id: string) => urlOf(id) ?? whole);
 }
 
 /**

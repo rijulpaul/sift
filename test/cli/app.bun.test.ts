@@ -468,7 +468,7 @@ describe("TUI — the message is markdown", () => {
 
 describe("TUI — summaries", () => {
   it("the Summarize button streams a summary into the viewer", async () => {
-    const { t, calls } = await startAll({ config: { summarize: false } });
+    const { t, calls } = await startAll();
     await until(t, (f) => f.includes("Inbox (6)"));
     t.mockInput.pressEnter();
     await until(t, (f) => f.includes("Paragraph 1."));
@@ -481,7 +481,7 @@ describe("TUI — summaries", () => {
   });
 
   it("s switches between the summary and the text, reusing a finished summary", async () => {
-    const { t, calls } = await startAll({ config: { summarize: false } });
+    const { t, calls } = await startAll();
     await until(t, (f) => f.includes("Inbox (6)"));
     t.mockInput.pressEnter();
     await until(t, (f) => f.includes("Paragraph 1."));
@@ -498,85 +498,65 @@ describe("TUI — summaries", () => {
     expect(calls.summaries).toBe(1);
   });
 
-  it("renders the summary's JSON as a title and text, not as the document", async () => {
-    // The model streams a JSON document; the pane must show a summary, not the
-    // document with its braces and keys.
-    const summaryChunks = [
-      '{"title":"Aggregators",',
-      '"content":[{"type":"text","text":"The piece argues that "},',
-      '{"type":"text","text":"aggregators capture demand."}',
-    ];
-    const { t } = await startAll({
-      config: { summarize: true },
-      summaryChunks,
-    });
+  it("waits to be asked before summarizing", async () => {
+    // Opening a message shows the text: a reader who only wants that never
+    // waits for the model.
+    const { t, calls } = await startAll();
     await until(t, (f) => f.includes("Inbox (6)"));
 
     t.mockInput.pressEnter();
+    await until(t, (f) => f.includes("Paragraph 1."));
 
-    const screen = await until(t, (f) =>
-      f.includes("aggregators capture demand."),
-    );
+    expect(calls.summaries).toBe(0);
+    expect(t.captureCharFrame()).toContain("Summarize");
+
+    t.mockInput.pressKey("l");
+    t.mockInput.pressKey("s");
+    await until(t, (f) => f.includes(SUMMARY_TEXT));
+
+    expect(calls.summaries).toBe(1);
+  });
+
+  it("draws the summary as markdown, not as its source", async () => {
+    const summaryChunks = [
+      "## Aggregators\n\n",
+      "The piece argues that **aggregators** ",
+      "capture demand.",
+    ];
+    const { t } = await startAll({ summaryChunks });
+    await until(t, (f) => f.includes("Inbox (6)"));
+
+    t.mockInput.pressEnter();
+    await until(t, (f) => f.includes("Paragraph 1."));
+    t.mockInput.pressKey("l");
+    t.mockInput.pressKey("s");
+
+    const screen = await until(t, (f) => f.includes("capture demand."));
 
     expect(screen).toContain("Aggregators");
     expect(screen).toContain("The piece argues that");
-    expect(screen).not.toContain('"type"');
-    expect(screen).not.toContain('"content"');
+    // Markers are concealed: the reader gets the writing, not the source.
+    expect(screen).not.toContain("##");
+    expect(screen).not.toContain("**");
     expect(screen).not.toContain("LINK_");
-  });
-
-  it("emphasises the summary title and separates it from the text", async () => {
-    const summaryChunks = [
-      '{"title":"Quarterly review",',
-      '"content":[{"type":"text","text":"The piece argues it."}]}',
-    ];
-    const { t } = await startAll({
-      config: { summarize: true },
-      summaryChunks,
-    });
-    await until(t, (f) => f.includes("Inbox (6)"));
-
-    t.mockInput.pressEnter();
-    const screen = await until(t, (f) => f.includes("Quarterly review"));
-    const lines = screen.split("\n");
-
-    // The title is bold; the body text is not.
-    const titleLine = lines.findIndex((line) =>
-      line.includes("Quarterly review"),
-    );
-    const spans = t.captureSpans() as unknown as {
-      lines: Array<{ spans: Array<{ text: string; attributes: number }> }>;
-    };
-    const titleSpan = spans.lines[titleLine]?.spans.find((span) =>
-      span.text.includes("Quarterly review"),
-    );
-
-    expect(titleSpan?.attributes).toBe(1); // 1 is bold in OpenTUI
-
-    // One blank row, then the paragraph: sections are told apart without air.
-    // Each frame row spans both panes, so only the preview half is read.
-    const previewOf = (line: string) =>
-      line.slice(line.lastIndexOf("││") + 2, -1);
-    expect(previewOf(lines[titleLine + 1]!).trim()).toBe("");
-    expect(previewOf(lines[titleLine + 2]!)).toContain("The piece argues it.");
   });
 
   it("draws a summary picture, captioned with its address", async () => {
     // A local file, so the test never reaches the network for its pixels.
     const picture = writeTinyPng(200, 20);
     const summaryChunks = [
-      '{"title":"Aggregators",',
-      '"content":[{"type":"text","text":"The piece argues it."},',
-      `,${JSON.stringify({ type: "image", url: picture })}]}`, // the address JSON-escapes
+      "## Aggregators\n\n",
+      "The piece argues it.\n\n",
+      `![Chart of growth](${picture})`,
     ];
 
-    const { t } = await startAll({
-      config: { summarize: true },
-      summaryChunks,
-    });
+    const { t } = await startAll({ summaryChunks });
     await until(t, (f) => f.includes("Inbox (6)"));
 
     t.mockInput.pressEnter();
+    await until(t, (f) => f.includes("Paragraph 1."));
+    t.mockInput.pressKey("l");
+    t.mockInput.pressKey("s");
 
     // Block characters appear only once the picture has loaded and been drawn,
     // so waiting for them is what proves it rendered.
@@ -584,13 +564,12 @@ describe("TUI — summaries", () => {
 
     expect(screen).toContain("Aggregators");
     expect(screen).toContain("The piece argues it.");
-    // The address is captioned under the picture. It is long, so it wraps: the
-    // pane border sits between the pieces of it.
+    // The address is captioned under the picture, so it can still be followed.
     expect(screen).toContain("image: ");
     expect(screen).toContain("picture");
     expect(picture).toContain("sift-image-");
     expect(screen).not.toContain("couldn't load");
-    expect(screen).not.toContain('"type"');
+    expect(screen).not.toContain("![");
   });
 
   it("grows summary pictures when the terminal gets taller", async () => {
@@ -598,16 +577,14 @@ describe("TUI — summaries", () => {
     // so the wider it is drawn. A wide picture would be capped by width and
     // never move.
     const picture = writeTinyPng(200, 200);
-    const summaryChunks = [
-      `{"title":"Aggregators","content":[${JSON.stringify({ type: "image", url: picture })}]}`,
-    ];
+    const summaryChunks = [`## Aggregators\n\n![Chart](${picture})`];
 
-    const { t } = await startAll(
-      { config: { summarize: true }, summaryChunks },
-      { width: 110, height: 24 },
-    );
+    const { t } = await startAll({ summaryChunks }, { width: 110, height: 24 });
     await until(t, (f) => f.includes("Inbox (6)"));
     t.mockInput.pressEnter();
+    await until(t, (f) => f.includes("Paragraph 1."));
+    t.mockInput.pressKey("l");
+    t.mockInput.pressKey("s");
     await until(t, (f) => /[▀▄█]/.test(f), 5000);
 
     /** The widest run of block characters: how wide the picture was drawn. */
@@ -643,24 +620,14 @@ describe("TUI — summaries", () => {
     expect(pictureWidth(back)).toBe(short);
   });
 
-  it("summarises straight away on open when summarize is on", async () => {
-    const { t } = await startAll({ config: { summarize: true } });
-    await until(t, (f) => f.includes("Inbox (6)"));
-
-    t.mockInput.pressEnter();
-
-    await until(t, (f) => f.includes(SUMMARY_TEXT));
-    expect(t.captureCharFrame()).toContain("Show text");
-  });
-
   it("shows an error with a retry hint when summarising fails", async () => {
-    const { t } = await startAll({
-      config: { summarize: true },
-      failSummary: "model down",
-    });
+    const { t } = await startAll({ failSummary: "model down" });
     await until(t, (f) => f.includes("Inbox (6)"));
 
     t.mockInput.pressEnter();
+    await until(t, (f) => f.includes("Paragraph 1."));
+    t.mockInput.pressKey("l");
+    t.mockInput.pressKey("s");
 
     const screen = await until(t, (f) =>
       f.includes("Couldn't summarize this message."),
@@ -1267,24 +1234,22 @@ describe("TUI — the picture overlay", () => {
   it("opens the picture of a summary the same way", async () => {
     const picture = writeTinyPng(200, 120);
     const summaryChunks = [
-      JSON.stringify({
-        title: "Aggregators",
-        content: [
-          { type: "text", text: "The piece argues it." },
-          { type: "image", url: picture },
-        ],
-      }),
+      `## Aggregators\n\nThe piece argues it.\n\n![Chart](${picture})`,
     ];
-    const { t } = await start({ config: { summarize: true }, summaryChunks });
+    const { t } = await start({ summaryChunks });
     await until(t, (f) => f.includes("Unread (2)"));
     t.mockInput.pressEnter();
+    await until(t, (f) => f.includes("Paragraph 1."));
+    t.mockInput.pressKey("l");
+    t.mockInput.pressKey("s");
     await until(t, (f) => f.includes("The piece argues it."));
 
     await clickPicture(t);
     const screen = await until(t, (f) => f.includes("esc close"));
 
     expect(screen).toContain("×");
-    expect(screen).not.toContain("The piece argues it.");
+    // The overlay is drawn over the summary, and the veil is translucent.
+    expect(screen).toContain("─");
   });
 });
 

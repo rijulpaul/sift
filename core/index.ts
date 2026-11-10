@@ -92,6 +92,7 @@ export class SiftCore {
         baseUrl: this.config.vlmBaseUrl,
         processImages: this.config.processImages,
       },
+      this.config.userPrompt ?? "",
     ).catch((error: unknown) => {
       // Never cache a failure, so the next summarize() gets a fresh attempt.
       this.agentPromise = null;

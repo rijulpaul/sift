@@ -50,9 +50,8 @@ export const summarizeNewsletterPrompt = `
 
   Do not modify, invent, or reconstruct URLs.
 
-  Do not inspect a link merely because it exists.
-
-  Only request additional information through a tool when that information is necessary to understand the newsletter.
+  Only request additional information through a tool when that information is relevant to the newsletter.
+  Do not inspect links within sponsorships, social media and other irrelevant content.
 
   ## Advertisements and Sponsors
 
@@ -103,41 +102,8 @@ export const summarizeNewsletterPrompt = `
 
   ## Output
 
-  Returned content should strictly be in JSON format (no markdown code blocks) with the following fields:
-
-  {
-    "title": "...",
-    "content": [
-      {
-        "type": "text",
-        "text": ""
-      },
-      {
-        "type": "image",
-        "url": "url"
-      }
-    ]
-  }
-
-  ### title
-
-  A short descriptive title for the summary.
-
-  ### content
-
-  A concise overview of the newsletter's main content represented as sequence of small paragraphs and optionally images in a json array.
-
-  **Text representation:**
-  {
-    "type": "text",
-    "text": ""
-  }
-
-  **Image representation:** (use only when tools for image understanding are available)
-  {
-    "type": "image",
-    "url": "url"
-  }
+  Strictly markdown format.
+  Display Images only if you have a tool to understand images and it aligns with the rules below embed images using ![]()
 
   ## Images (use only when tools for image understanding are available)
 
@@ -154,7 +120,7 @@ export const summarizeNewsletterPrompt = `
   - Screenshots
   - Technical figures
   - Infographics
-  - Images containing important text
+  - Images containing important text and formulas
 
   Images not worth showing:
 

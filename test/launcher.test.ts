@@ -96,17 +96,16 @@ beforeEach(() => {
 });
 
 /** The answers every run needs, whatever it is testing. */
-const baseAnswers = {
-  text: ["news@example.com"],
-  confirm: [false, false], // create_email, mark_as_read, summarize, process_images
-};
+const EMAIL = "news@example.com";
+/** The reader's own instructions, left blank unless a test says otherwise. */
+const NO_USER_PROMPT = "";
 
 describe("launcher — custom OpenAI endpoints", () => {
   it("asks for a base URL instead of a model name", async () => {
     givenAnswers({
-      ...baseAnswers,
       select: ["custom endpoint (OpenAI compatible)"],
-      text: [...baseAnswers.text, "http://localhost:11434/v1"],
+      text: [EMAIL, "http://localhost:11434/v1", NO_USER_PROMPT],
+      confirm: [false, false],
     });
 
     await createConfig();
@@ -115,6 +114,7 @@ describe("launcher — custom OpenAI endpoints", () => {
     expect(asked(text)).toEqual([
       "Email address to use",
       "LLM Custom Endpoint URL (OpenAI compatible)",
+      "User Instructions for the agent apart from the system prompt. (optional)",
     ]);
     expect(asked(text)).not.toContain("LLM model name");
     expect(written()).toMatchObject({
@@ -126,9 +126,9 @@ describe("launcher — custom OpenAI endpoints", () => {
 
   it("asks for a model name when a built-in provider is chosen", async () => {
     givenAnswers({
-      ...baseAnswers,
       select: ["openrouter"],
-      text: [...baseAnswers.text, "openai/gpt-oss-20b"],
+      text: [EMAIL, "openai/gpt-oss-20b", NO_USER_PROMPT],
+      confirm: [false, false],
     });
 
     await createConfig();
@@ -147,12 +147,12 @@ describe("launcher — custom OpenAI endpoints", () => {
   it("asks for the vision base URL when the vision endpoint is custom", async () => {
     givenAnswers({
       text: [
-        ...baseAnswers.text,
+        EMAIL,
         "openai/gpt-oss-20b",
         "http://vision.local:8000/v1",
+        NO_USER_PROMPT,
       ],
-      // summarize, process_images = true
-      confirm: [false, true],
+      confirm: [false, true], // mark_as_read, process_images
       select: ["openrouter", "custom endpoint (OpenAI compatible)"],
     });
 
@@ -178,9 +178,9 @@ describe("launcher — custom OpenAI endpoints", () => {
       }),
     );
     givenAnswers({
-      ...baseAnswers,
       select: ["custom endpoint (OpenAI compatible)"],
-      text: [...baseAnswers.text, "http://localhost:11434/v1"],
+      text: [EMAIL, "http://localhost:11434/v1", NO_USER_PROMPT],
+      confirm: [false, false],
     });
 
     await createConfig();
@@ -201,9 +201,9 @@ describe("launcher — custom OpenAI endpoints", () => {
       }),
     );
     givenAnswers({
-      ...baseAnswers,
       select: ["openrouter"],
-      text: [...baseAnswers.text, "openai/gpt-oss-20b"],
+      text: [EMAIL, "openai/gpt-oss-20b", NO_USER_PROMPT],
+      confirm: [false, false],
     });
 
     await createConfig();
@@ -217,14 +217,14 @@ describe("launcher — custom OpenAI endpoints", () => {
 
   it("rejects a base URL that is not a URL", async () => {
     givenAnswers({
-      ...baseAnswers,
       select: ["custom endpoint (OpenAI compatible)"],
-      text: [...baseAnswers.text, "localhost:11434"],
+      text: [EMAIL, "localhost:11434", NO_USER_PROMPT],
+      confirm: [false, false],
     });
 
     // The validator is handed to the prompt; call it the way clack would.
     await createConfig();
-    const baseUrlPrompt = text.mock.calls.at(-1)?.[0] as {
+    const baseUrlPrompt = text.mock.calls[1]?.[0] as {
       validate?: (input: string) => string | undefined;
     };
 

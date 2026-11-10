@@ -109,21 +109,25 @@ const promptFor = async (
   // Everything else is free-form text
   const isEmail = key === "email";
   const isBaseUrl = BASE_URL_KEYS.has(key);
+  // The reader's own instructions are the one optional text setting.
+  const isOptional = key === "user_prompt";
   const value = await p.text({
     message: description,
     placeholder: current === null ? "not set" : undefined,
     initialValue: typeof current === "string" ? current : undefined,
     validate: (input) => {
-      if (isEmail) {
-        if (input !== undefined && input !== "" && !EMAIL_REGEX.test(input)) {
-          return "Enter a valid email address";
-        }
+      const value = (input ?? "").trim();
+
+      if (isOptional) {
         return;
       }
-      if (input === undefined || input.trim() === "") {
+      if (value === "") {
         return "This field is required";
       }
-      if (isBaseUrl && !BASE_URL_REGEX.test(input.trim())) {
+      if (isEmail && !EMAIL_REGEX.test(value)) {
+        return "Enter a valid email address";
+      }
+      if (isBaseUrl && !BASE_URL_REGEX.test(value)) {
         return "Enter a full URL, e.g. http://localhost:11434/v1";
       }
     },

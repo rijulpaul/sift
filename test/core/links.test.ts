@@ -31,33 +31,22 @@ describe("resolveLinks", () => {
     );
   });
 
-  it("reads a markdown link as label and url", () => {
+  it("keeps a markdown link a link, with the real url", () => {
+    // The summary is drawn as markdown, so the shape has to survive.
     expect(resolveLinks("[our post](LINK_1)", links)).toBe(
-      "our post (https://example.com/post)",
+      "[our post](https://example.com/post)",
     );
   });
 
-  it("reads a markdown image with its alt text", () => {
+  it("keeps a markdown image an image, with the real url", () => {
     expect(resolveLinks("![Chart of revenue](LINK_0)", links)).toBe(
-      "[image: Chart of revenue] (https://cdn.example.com/chart.png)",
-    );
-  });
-
-  it("names an image that has no alt text", () => {
-    expect(resolveLinks("![](LINK_0)", links)).toBe(
-      "[image] (https://cdn.example.com/chart.png)",
+      "![Chart of revenue](https://cdn.example.com/chart.png)",
     );
   });
 
   it("handles several placeholders in one string", () => {
     expect(resolveLinks("LINK_1 and [two](LINK_2)", links)).toBe(
-      "https://example.com/post and two (https://example.com/plain)",
-    );
-  });
-
-  it("handles a JSON image block, as the summary carries it", () => {
-    expect(resolveLinks('{"type":"image","url":"LINK_0"}', links)).toBe(
-      '{"type":"image","url":"https://cdn.example.com/chart.png"}',
+      "https://example.com/post and [two](https://example.com/plain)",
     );
   });
 

@@ -27,19 +27,10 @@ const fs = {
   writeFileSync: vi.mocked(writeFileSync),
 };
 
-/** The raw config the loader last wrote to defaults.json. */
-const written = () => {
-  const contents = fs.writeFileSync.mock.calls.at(-1)?.[1] as
-    string | undefined;
-  return JSON.parse(contents ?? "{}") as Record<string, unknown>;
-};
-
 /** A defaults.json containing every known setting. */
 const completeRaw = {
   email: "news@example.com",
-  create_email: false,
   mark_as_read: true,
-  summarize: true,
   llm_provider: "openrouter",
   llm_name: "openai/gpt-oss-120b",
   llm_base_url: null,
@@ -47,6 +38,7 @@ const completeRaw = {
   vlm_provider: null,
   vlm_name: null,
   vlm_base_url: null,
+  user_prompt: null,
 };
 
 const givenFile = (raw: unknown) => {
@@ -145,6 +137,16 @@ describe("resolveConfig", () => {
     expect(config.markAsRead).toBe(true);
     expect(config.email).toBeUndefined(); // "" counts as unset
     expect(config.vlmName).toBeUndefined(); // whitespace counts as unset
+  });
+
+  it("carries the reader's own instructions through, and drops blanks", () => {
+    givenFile({ ...completeRaw, user_prompt: "Only the numbers, please." });
+
+    expect(resolveConfig().userPrompt).toBe("Only the numbers, please.");
+
+    givenFile({ ...completeRaw, user_prompt: "   " });
+
+    expect(resolveConfig().userPrompt).toBeUndefined();
   });
 
   it("lets CLI overrides win, and ignores flags that were not passed", () => {

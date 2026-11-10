@@ -43,5 +43,10 @@
     "flag": "--vlm-base-url",
     "type": "string",
     "description": "Vision-language model Custom Endpoint URL (OpenAI compatible)"
+  },
+  "user_prompt": {
+    "flag": "--user-prompt",
+    "type": "string",
+    "description": "User Instructions for the agent apart from the system prompt. (optional)"
   }
 }

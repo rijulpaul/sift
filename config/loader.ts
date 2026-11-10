@@ -106,6 +106,7 @@ export const resolveConfig = (overrides: ConfigOverrides = {}): Config => {
     vlmProvider: asString(raw.vlm_provider) as ModelProvider | undefined,
     vlmName: asString(raw.vlm_name),
     vlmBaseUrl: asString(raw.vlm_base_url),
+    userPrompt: asString(raw.user_prompt),
   };
 };
 

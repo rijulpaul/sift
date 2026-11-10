@@ -112,9 +112,7 @@ export function createMockMessages(now = new Date()): MockMessage[] {
 const DEFAULT_CONFIG: Config = {
   email: "news@example.com",
   displayName: undefined,
-  createEmail: false,
   markAsRead: false,
-  summarize: false,
   llmProvider: "openrouter",
   llmName: "openai/gpt-oss-120b",
   llmBaseUrl: undefined,
@@ -122,6 +120,7 @@ const DEFAULT_CONFIG: Config = {
   vlmProvider: undefined,
   vlmName: undefined,
   vlmBaseUrl: undefined,
+  userPrompt: undefined,
 };
 
 const toContent = (text: string): MaskedContent => ({

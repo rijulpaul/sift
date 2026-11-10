@@ -6,15 +6,22 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const agent = vi.hoisted(() => ({ chunks: [] as string[] }));
+const agent = vi.hoisted(() => ({
+  chunks: [] as string[],
+  /** Arguments `create` was called with, in order. */
+  created: [] as unknown[][],
+}));
 
 vi.mock("../../core/agent", () => ({
   NewsletterSummarizationAgent: {
-    create: async () => ({
-      async *invoke() {
-        for (const chunk of agent.chunks) yield chunk;
-      },
-    }),
+    create: async (...args: unknown[]) => {
+      agent.created.push(args);
+      return {
+        async *invoke() {
+          for (const chunk of agent.chunks) yield chunk;
+        },
+      };
+    },
   },
 }));
 
@@ -26,9 +33,7 @@ import type { MaskedContent } from "../../core/process";
 const config = {
   email: "news@example.com",
   displayName: undefined,
-  createEmail: false,
   markAsRead: false,
-  summarize: true,
   llmProvider: "openrouter",
   llmName: "openai/gpt-oss-20b",
   llmBaseUrl: undefined,
@@ -36,6 +41,7 @@ const config = {
   vlmProvider: undefined,
   vlmName: undefined,
   vlmBaseUrl: undefined,
+  userPrompt: undefined,
 } satisfies Config;
 
 const newsletter: MaskedContent = {
@@ -46,8 +52,11 @@ const newsletter: MaskedContent = {
   },
 };
 
-const summarize = async () => {
-  const core = new SiftCore({ config, inbox: {} as Inbox });
+const summarize = async (overrides: Partial<Config> = {}) => {
+  const core = new SiftCore({
+    config: { ...config, ...overrides },
+    inbox: {} as Inbox,
+  });
 
   const events: Array<{ done: boolean; chunk: string | undefined }> = [];
   for await (const event of core.summarize(newsletter)) events.push(event);
@@ -66,6 +75,7 @@ const summarize = async () => {
 
 beforeEach(() => {
   agent.chunks = [];
+  agent.created = [];
 });
 
 describe("SiftCore.summarize — links", () => {
@@ -109,21 +119,20 @@ describe("SiftCore.summarize — streaming", () => {
     expect(parts).toEqual(["The ", "quarterly ", "numbers."]);
   });
 
-  it("streams a JSON summary without pausing on its brackets", async () => {
-    // A regression guard: a JSON array bracket once looked like the start of a
-    // markdown label, and the stream froze until the array closed.
+  it("streams a markdown summary without pausing on its syntax", async () => {
+    // A regression guard: markdown punctuation once looked like the start of a
+    // link label, and the stream froze until it closed.
     agent.chunks = [
-      '{"title":"Aggregators","content":[',
-      '{"type":"text","text":"The piece argues ',
-      'that aggregators capture demand."},',
-      '{"type":"image","url":"LINK_0"}]}',
+      "## Aggregators\n\n",
+      "The piece argues that **aggregators** ",
+      "capture demand.\n\n![Chart](LINK_0)",
     ];
 
     const { text } = await summarize();
 
     expect(text).toBe(
-      '{"title":"Aggregators","content":[{"type":"text","text":"The piece argues ' +
-        'that aggregators capture demand."},{"type":"image","url":"https://cdn.example.com/chart.png"}]}',
+      "## Aggregators\n\nThe piece argues that **aggregators** capture demand.\n\n" +
+        "![Chart](https://cdn.example.com/chart.png)",
     );
   });
 
@@ -145,5 +154,25 @@ describe("SiftCore.summarize — streaming", () => {
 
     expect(doneCount).toBe(1);
     expect(last).toEqual({ done: true, chunk: undefined });
+  });
+});
+
+describe("SiftCore.summarize — the reader's own instructions", () => {
+  it("hands them to the agent when they are configured", async () => {
+    agent.chunks = ["ok"];
+
+    await summarize({ userPrompt: "Only the numbers, please." });
+
+    // create(modelInfo, toolConfig, userPrompt)
+    expect(agent.created).toHaveLength(1);
+    expect(agent.created[0]?.[2]).toBe("Only the numbers, please.");
+  });
+
+  it("sends an empty string when they are not configured", async () => {
+    agent.chunks = ["ok"];
+
+    await summarize({ userPrompt: undefined });
+
+    expect(agent.created[0]?.[2]).toBe("");
   });
 });

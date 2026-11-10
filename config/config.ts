@@ -11,4 +11,5 @@ export interface Config {
   vlmProvider: ModelProvider | undefined;
   vlmName: string | undefined;
   vlmBaseUrl: string | undefined;
+  userPrompt: string | undefined;
 }

@@ -127,13 +127,14 @@ describe("markdownOf", () => {
       }),
     );
 
+    // Markdown stays markdown: the preview draws the picture and links the text.
     expect(text).toBe(
-      "Read the post (https://example.com/post) now.\n\n" +
-        "[image: Chart of growth] (https://cdn.example.com/growth.png)",
+      "Read [the post](https://example.com/post) now.\n\n" +
+        "![Chart of growth](https://cdn.example.com/growth.png)",
     );
   });
 
-  it("names images that have no alt text", () => {
+  it("keeps an image without alt text an image", () => {
     expect(
       markdownOf(
         body({
@@ -145,7 +146,7 @@ describe("markdownOf", () => {
           },
         }),
       ),
-    ).toBe("[image] (https://cdn.example.com/x.png)");
+    ).toBe("![](https://cdn.example.com/x.png)");
   });
 
   it("leaves a placeholder it cannot resolve", () => {

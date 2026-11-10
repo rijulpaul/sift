@@ -498,15 +498,15 @@ export class App implements TuiHandle {
       return;
     }
 
-    const { summarize, markAsRead } = this.core.config;
-    this.store.dispatch({ type: "open", index, showSummary: summarize });
+    const { markAsRead } = this.core.config;
+    // Opening shows the message; the summary is one key away (`s`), so a reader
+    // who only wants the text never waits for the model.
+    this.store.dispatch({ type: "open", index, showSummary: false });
 
     if (markAsRead && mail.unread) void this.setUnread(mail.id, false);
 
-    // The row carries no body, so it is fetched now; summarising waits for it.
-    void this.loadBody(mail.id).then(() => {
-      if (summarize) void this.summarize(mail.id);
-    });
+    // The row carries no body, so it is fetched now.
+    void this.loadBody(mail.id);
   }
 
   /**

@@ -33,16 +33,17 @@ export const toolConfigSchema = z
   .object({
     vlmProvider: z.preprocess(unsetToUndefined, modelProviderSchema.optional()),
     vlmName: z.preprocess(unsetToUndefined, z.string().optional()),
+    baseUrl: z.preprocess(unsetToUndefined, z.url().optional()),
     processImages: z.boolean(),
   })
   .refine(
     (toolConfig) =>
       !toolConfig.processImages ||
       (toolConfig.vlmProvider !== undefined &&
-        toolConfig.vlmName !== undefined),
+        (toolConfig.vlmName !== undefined || toolConfig.baseUrl !== undefined)),
     {
       message:
-        "process_images is enabled but the vision settings are missing: set vlm_provider and vlm_name, or disable process_images",
+        "process_images is enabled but the vision settings are missing: set vlm_provider and vlm_name base_url, or disable process_images",
       path: ["processImages"],
     },
   );
@@ -56,16 +57,19 @@ export interface ToolConfig {
 
 const contextSchema = z.object({
   maskedUrls: z.record(z.number(), MaskedUrlSchema),
+  userPrompt: z.string().optional(),
   toolConfig: toolConfigSchema,
 });
 
 export type context = {
   maskedUrls: Record<number, MaskedUrl>;
+  userPrompt?: string;
   toolConfig: ToolConfig;
 };
 
 export class NewsletterSummarizationAgent extends BaseAgent<MaskedContent> {
   private readonly toolConfig: ToolConfig;
+  private readonly userPrompt: string;
 
   /**
    * Build the agent. Async because `langchain`, its tools and the provider SDK
@@ -75,6 +79,8 @@ export class NewsletterSummarizationAgent extends BaseAgent<MaskedContent> {
   static async create(
     modelInfo: ModelInfo,
     toolConfig: ToolConfig,
+    /** Extra instructions from the reader; empty for none. */
+    userPrompt = "",
   ): Promise<NewsletterSummarizationAgent> {
     const [{ createAgent }, { describeImage }, model] = await Promise.all([
       import("langchain"),
@@ -84,6 +90,7 @@ export class NewsletterSummarizationAgent extends BaseAgent<MaskedContent> {
 
     return new NewsletterSummarizationAgent(
       toolConfig,
+      userPrompt,
       createAgent({
         model,
         tools: toolConfig.processImages ? [describeImage] : [],
@@ -95,19 +102,25 @@ export class NewsletterSummarizationAgent extends BaseAgent<MaskedContent> {
 
   private constructor(
     toolConfig: ToolConfig,
+    userPrompt: string,
     agent: ReturnType<typeof createAgent>,
   ) {
     super({ agentName: "Newsletter Summarization" });
     this.toolConfig = toolConfig;
+    this.userPrompt = userPrompt;
     this.agent = agent;
   }
 
   protected async *execute(
     context: MaskedContent,
   ): AsyncGenerator<string, void, void> {
+    const messages = [{ role: "user", content: context.content }];
+    if (this.userPrompt !== "") {
+      messages.push({ role: "user", content: this.userPrompt });
+    }
     const stream = await this.agent.stream(
       {
-        messages: [{ role: "user", content: context.content }],
+        messages,
       },
       {
         streamMode: "messages",

@@ -2,6 +2,9 @@
 // schema. The rule: the vision settings are optional while image processing is
 // off, and required as soon as it is on — this is what used to fail with a zod
 // error on any run that left vlm_provider/vlm_name unset.
+//
+// A model is identified by a name or, for a self-hosted OpenAI endpoint, by its
+// base URL, so either one satisfies the rule.
 
 import { describe, expect, it } from "vitest";
 
@@ -63,7 +66,8 @@ describe("toolConfigSchema — image processing on", () => {
     });
 
     expect(message).toMatch(/process_images is enabled/);
-    expect(message).toMatch(/vlm_provider and vlm_name/);
+    expect(message).toMatch(/vlm_provider/);
+    expect(message).toMatch(/vlm_name/);
   });
 
   it.each([
@@ -76,11 +80,49 @@ describe("toolConfigSchema — image processing on", () => {
     ).toBe(false);
   });
 
-  it("rejects a provider without a name", () => {
+  it("rejects a provider with neither a name nor a base URL", () => {
     expect(
       parse({
         vlmProvider: "openai",
         vlmName: undefined,
+        processImages: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a base URL in place of a model name", () => {
+    const result = parse({
+      vlmProvider: "openai",
+      vlmName: undefined,
+      baseUrl: "http://localhost:11434/v1",
+      processImages: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.baseUrl).toBe(
+      "http://localhost:11434/v1",
+    );
+  });
+
+  it("rejects a base URL that is not a URL at all", () => {
+    // Note the schema accepts any absolute URL: the launcher is what insists on
+    // http(s), so a scheme-less string like "localhost:11434" still parses here.
+    expect(
+      parse({
+        vlmProvider: "openai",
+        vlmName: undefined,
+        baseUrl: "not a url",
+        processImages: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("treats a blank base URL as unset, like a blank name", () => {
+    expect(
+      parse({
+        vlmProvider: "openai",
+        vlmName: undefined,
+        baseUrl: "  ",
         processImages: true,
       }).success,
     ).toBe(false);
