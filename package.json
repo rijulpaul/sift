@@ -17,6 +17,8 @@
     "@types/bun": "latest",
     "oxlint": "^1.92.0",
     "oxlint-tsgolint": "^7.0.2006",
+    "pino": "^10.4.0",
+    "pino-pretty": "^13.2.0",
     "prettier": "3.9.9",
     "vitest": "^5.1.0"
   },
@@ -36,8 +38,6 @@
     "argparse": "^3.0.4",
     "cheerio": "^1.2.0",
     "langchain": "^1.6.3",
-    "pino": "^10.4.0",
-    "pino-pretty": "^13.2.0",
     "turndown": "^7.2.5",
     "zod": "^4.6.7"
   }
