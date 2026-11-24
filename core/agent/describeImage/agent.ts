@@ -10,7 +10,10 @@ export class DescribeImageAgent extends BaseAgent<string> {
    * imported here rather than at module load, which keeps them off the
    * startup path.
    */
-  static async create(modelInfo: ModelInfo): Promise<DescribeImageAgent> {
+  static async create(
+    modelInfo: ModelInfo,
+    systemPrompt?: string,
+  ): Promise<DescribeImageAgent> {
     const [{ createAgent }, model] = await Promise.all([
       import("langchain"),
       getModel(modelInfo),
@@ -19,7 +22,7 @@ export class DescribeImageAgent extends BaseAgent<string> {
     return new DescribeImageAgent(
       createAgent({
         model,
-        systemPrompt: describeImagePrompt,
+        systemPrompt: systemPrompt ?? describeImagePrompt,
       }),
     );
   }
