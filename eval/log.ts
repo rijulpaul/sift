@@ -95,6 +95,12 @@ class Progress {
   private frame = 0;
   private label = "";
   private active = false;
+  private concurrent = false;
+
+  /** With more than one in-flight stage, the spinner would be overwritten. */
+  setConcurrency(value: number) {
+    this.concurrent = value > 1;
+  }
 
   private draw = () => {
     const frame = FRAMES[this.frame++ % FRAMES.length]!;
@@ -126,22 +132,24 @@ class Progress {
     label: string,
     fn: () => Promise<T>,
     detail?: (value: T) => string | undefined,
+    prefix?: string,
   ): Promise<T> => {
-    this.begin(label);
+    if (!this.concurrent) this.begin(label);
     const started = performance.now();
+    const tag = this.concurrent && prefix ? `${dim(prefix)} ` : "";
     try {
       const value = await fn();
       this.end();
       const time = dim(formatDuration(performance.now() - started));
       const extra = detail?.(value);
       console.log(
-        `  ${green("✓")} ${label.padEnd(16)} ${time}${extra ? `  ${extra}` : ""}`,
+        `  ${green("✓")} ${tag}${label.padEnd(16)} ${time}${extra ? `  ${extra}` : ""}`,
       );
       return value;
     } catch (error) {
       this.end();
       const time = dim(formatDuration(performance.now() - started));
-      console.log(`  ${red("✗")} ${label.padEnd(16)} ${time}`);
+      console.log(`  ${red("✗")} ${tag}${label.padEnd(16)} ${time}`);
       console.log(`    ${red(oneLine(error))}`);
       throw error;
     }
@@ -155,6 +163,11 @@ const progress = new Progress();
 // ---------------------------------------------------------------------------
 
 export const log = {
+  /** Switches stage reporting between the single spinner and plain lines. */
+  setConcurrency(value: number) {
+    progress.setConcurrency(value);
+  },
+
   /** Prints the run configuration as a short key/value block. */
   header(entries: [string, string][]) {
     console.log(bold("sift eval"));
