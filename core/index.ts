@@ -165,6 +165,12 @@ export class SiftCore {
     const startedAt = Date.now();
     let chunks = 0;
 
+    for (const link in message.links) {
+      if (!message.links[link]?.isImage) {
+        message.content = message.content.replaceAll(`LINK_${link}`, "");
+      }
+    }
+
     log.debug(
       {
         chars: message.content.length,
