@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import { ArgumentParser } from "argparse";
 
 import completions from "./config/completions.json" with { type: "json" };

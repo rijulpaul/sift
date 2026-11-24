@@ -3,6 +3,9 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "sift": "./index.ts"
+  },
   "scripts": {
     "dev": "bun run index.ts",
     "test": "vitest run",
